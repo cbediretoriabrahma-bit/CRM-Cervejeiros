@@ -1,0 +1,10 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}CRM Cervejeiros{% endblock %}</title>
+<link rel="manifest" href="{{url_for('static',filename='manifest.json')}}"><link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head><body>
+{% if session.get('user_id') %}<header><div class="brand">🍺 <b>CRM CERVEJEIROS</b><small>Expansão inteligente</small></div><nav>
+<a href="{{url_for('dashboard')}}">Dashboard</a><a href="{{url_for('pipeline')}}">Pipeline</a><a href="{{url_for('leads')}}">Leads</a><a href="{{url_for('agenda')}}">Agenda</a><a href="{{url_for('reports')}}">Relatórios</a>
+{% if session.get('role') in ['admin','manager'] %}<a href="{{url_for('team')}}">Equipe</a><a href="{{url_for('settings')}}">Config.</a>{% endif %}
+<a class="btn-light" href="{{url_for('lead_new')}}">+ Lead</a><a href="{{url_for('logout')}}">Sair</a></nav></header>{% endif %}
+<main class="container">{% with messages=get_flashed_messages(with_categories=true) %}{% for c,m in messages %}<div class="flash {{c}}">{{m}}</div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</main>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/service-worker.js').catch(()=>{})}</script></body></html>
