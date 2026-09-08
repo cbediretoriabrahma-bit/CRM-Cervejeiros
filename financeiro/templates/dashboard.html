@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block title %}Painel Financeiro{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Contas a Pagar</h1><p>Visão geral das obrigações financeiras.</p></div><a class="btn primary" href="{{ url_for('new_payable') }}">+ Cadastrar conta</a></div>
+{% if overdue_count %}<div class="alert-banner">🔔 Atenção: existem <strong>{{ overdue_count }}</strong> conta(s) vencida(s) sem baixa.</div>{% endif %}
+<div class="cards">
+<div class="metric"><span>Em aberto</span><strong>{{ open_total|brl }}</strong></div>
+<div class="metric red-border"><span>Vencido</span><strong>{{ overdue_total|brl }}</strong></div>
+<div class="metric orange-border"><span>Próximos 7 dias</span><strong>{{ due_7_total|brl }}</strong></div>
+<div class="metric green-border"><span>Pago no mês</span><strong>{{ paid_month|brl }}</strong></div>
+</div>
+<form class="filters" method="get"><input name="q" value="{{ search }}" placeholder="Buscar fornecedor, conta ou categoria"><select name="status"><option value="">Todos os status</option>{% for st in ['Vencido','Parcial vencido','Vence em 3 dias','Vence em 7 dias','A vencer','Parcial','Pago'] %}<option value="{{ st }}" {% if status_filter==st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select><button class="btn" type="submit">Filtrar</button></form>
+<div class="legend"><span class="dot red"></span>Vencido <span class="dot yellow"></span>Até 3 dias <span class="dot orange"></span>Até 7 dias <span class="dot blue"></span>A vencer <span class="dot purple"></span>Parcial <span class="dot green"></span>Pago</div>
+<div class="table-wrap"><table><thead><tr><th>Status</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th></th></tr></thead><tbody>
+{% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td><strong>{{ a.supplier }}</strong></td><td>{{ a.description }}</td><td>{{ a.total_amount|brl }}</td><td>{{ a.paid_amount|brl }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Abrir</a></td></tr>{% else %}<tr><td colspan="8" class="empty">Nenhuma conta encontrada.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}
