@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Contas a Pagar{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='financeiro.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div><strong>💰 Cervejeiros Financeiro</strong><span>Contas a Pagar</span></div>
+  {% if session.get('finance_user_id') %}
+  <nav><a href="{{ url_for('dashboard') }}">Painel</a><a href="{{ url_for('new_payable') }}">+ Nova conta</a><a href="{{ url_for('alerts') }}">🔔 Alertas</a><a href="{{ url_for('logout') }}">Sair</a></nav>
+  {% endif %}
+</header>
+<main class="container">
+{% with messages = get_flashed_messages(with_categories=true) %}{% for category,msg in messages %}<div class="flash {{ category }}">{{ msg }}</div>{% endfor %}{% endwith %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>
