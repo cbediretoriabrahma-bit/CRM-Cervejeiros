@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block title %}{{ 'Editar' if account else 'Nova' }} Conta{% endblock %}{% block content %}
+<div class="page-head"><div><h1>{{ 'Editar conta' if account else 'Nova conta a pagar' }}</h1><p>Cadastre o compromisso e, se quiser, já informe uma entrada.</p></div></div>
+<form method="post" class="panel form-grid">
+<label>Fornecedor<input name="supplier" required value="{{ account.supplier if account else '' }}"></label>
+<label>Descrição<input name="description" required value="{{ account.description if account else '' }}"></label>
+<label>Categoria<input name="category" value="{{ account.category if account else '' }}" placeholder="Ex.: Chopp, aluguel, energia, imposto"></label>
+<label>Documento / referência<input name="document" value="{{ account.document if account else '' }}" placeholder="NF, boleto, contrato..."></label>
+<label>Valor total<input name="total_amount" required inputmode="decimal" value="{{ ('%.2f'|format(account.total_amount)).replace('.',',') if account else '' }}" placeholder="0,00"></label>
+<label>Vencimento<input type="date" name="due_date" required value="{{ account.due_date.isoformat() if account else '' }}"></label>
+{% if not account %}<label>Entrada / pagamento inicial<input name="entry_amount" inputmode="decimal" placeholder="0,00"></label>
+<label>Data da entrada<input type="date" name="entry_date" value="{{ today.isoformat() if today is defined else '' }}"></label>
+<label>Forma da entrada<select name="entry_method"><option>PIX</option><option>Boleto</option><option>Transferência</option><option>Cartão</option><option>Dinheiro</option><option>Outro</option></select></label>{% endif %}
+<label class="full">Observações<textarea name="notes" rows="4">{{ account.notes if account else '' }}</textarea></label>
+<div class="full actions"><button class="btn primary" type="submit">Salvar conta</button><a class="btn" href="{{ url_for('dashboard') }}">Cancelar</a></div>
+</form>
+{% endblock %}
