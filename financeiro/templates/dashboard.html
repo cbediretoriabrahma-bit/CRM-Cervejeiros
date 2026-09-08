@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block title %}Painel Financeiro{% endblock %}{% block content %}
-<div class="page-head"><div><h1>Painel Financeiro</h1><p>Receitas, despesas, contas a pagar e resultado por unidade.</p></div><div class="actions"><a class="btn primary" href="{{ url_for('new_payable') }}">+ Conta a pagar</a><a class="btn secondary" href="{{ url_for('new_revenue') }}">+ Receita</a><a class="btn" href="{{ url_for('dre') }}">Ver DRE</a></div></div>
+<div class="page-head"><div><h1>Painel Financeiro</h1><p>Receitas, despesas, contas a pagar, ponto de equilíbrio e saúde financeira por unidade.</p></div><div class="actions"><a class="btn primary" href="{{ url_for('new_payable') }}">+ Conta a pagar</a><a class="btn secondary" href="{{ url_for('new_revenue') }}">+ Receita</a><a class="btn" href="{{ url_for('dre') }}">Ver DRE</a></div></div>
 
 <form class="filters" method="get">
 <select name="store"><option value="">Todas as unidades</option>{% for s in stores %}<option value="{{ s }}" {% if store_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
@@ -18,6 +18,7 @@
 <div class="metric blue-border"><span>Receitas</span><strong>{{ revenue_month|brl }}</strong></div>
 <div class="metric red-border"><span>Despesas pagas</span><strong>{{ expense_month|brl }}</strong></div>
 <div class="metric {% if result_month >= 0 %}green-border{% else %}red-border{% endif %}"><span>Resultado</span><strong>{{ result_month|brl }}</strong></div>
+<div class="metric"><span>Ponto de equilíbrio gerencial</span><strong>{{ expense_month|brl }}</strong><small>Receita mínima para cobrir os custos pagos do mês.</small></div>
 <div class="metric"><span>Contas lançadas no filtro</span><strong>{{ filtered_total|brl }}</strong></div>
 <div class="metric green-border"><span>Pago no filtro</span><strong>{{ filtered_paid|brl }}</strong></div>
 <div class="metric red-border"><span>Saldo em aberto</span><strong>{{ filtered_balance|brl }}</strong></div>
@@ -28,6 +29,46 @@
 <div class="grid-two charts-grid">
 <div class="panel"><h2>Receitas x Despesas por unidade</h2><canvas id="unitsChart"></canvas></div>
 <div class="panel"><h2>Resultado por unidade</h2><canvas id="resultChart"></canvas></div>
+</div>
+
+<div class="grid-two charts-grid">
+<div class="panel"><h2>Receita x Ponto de equilíbrio</h2><canvas id="breakEvenChart"></canvas></div>
+<div class="panel"><h2>Margem por unidade</h2><canvas id="marginChart"></canvas></div>
+</div>
+
+<div class="panel" style="margin-bottom:18px">
+<h2>Ponto de equilíbrio por unidade — {{ month }}</h2>
+<p class="muted">Cálculo gerencial: considera como ponto de equilíbrio a receita necessária para cobrir as despesas efetivamente pagas no mês.</p>
+<div class="table-wrap"><table><thead><tr><th>Unidade</th><th>Receita</th><th>Ponto de equilíbrio</th><th>Folga / Déficit</th><th>Situação</th></tr></thead><tbody>
+{% for u in unit_rows %}
+{% set gap = u.revenue - u.expense %}
+<tr><td><strong>{{ u.store }}</strong></td><td>{{ u.revenue|brl }}</td><td>{{ u.expense|brl }}</td><td><strong class="{% if gap >= 0 %}positive{% else %}negative{% endif %}">{{ gap|brl }}</strong></td><td>{% if gap > 0 %}<span class="badge green">Acima do equilíbrio</span>{% elif gap == 0 %}<span class="badge yellow">No equilíbrio</span>{% else %}<span class="badge red">Abaixo do equilíbrio</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="empty">Nenhuma unidade com movimento.</td></tr>{% endfor %}
+</tbody></table></div>
+</div>
+
+<div class="panel" style="margin-bottom:18px">
+<h2>Fechamento mensal — Saúde financeira por unidade</h2>
+<p class="muted">Classificação automática baseada no resultado e na margem do mês.</p>
+<div class="table-wrap"><table><thead><tr><th>Unidade</th><th>Receitas</th><th>Despesas</th><th>Resultado</th><th>Margem</th><th>Ponto de equilíbrio</th><th>Saúde financeira</th></tr></thead><tbody>
+{% for u in unit_rows %}
+{% set margin = ((u.result / u.revenue) * 100) if u.revenue else 0 %}
+<tr>
+<td><strong>{{ u.store }}</strong></td>
+<td>{{ u.revenue|brl }}</td>
+<td>{{ u.expense|brl }}</td>
+<td><strong class="{% if u.result >= 0 %}positive{% else %}negative{% endif %}">{{ u.result|brl }}</strong></td>
+<td>{{ '%.1f'|format(margin) }}%</td>
+<td>{{ u.expense|brl }}</td>
+<td>
+{% if u.result < 0 %}<span class="badge red">Crítica</span>
+{% elif margin < 10 %}<span class="badge yellow">Atenção</span>
+{% elif margin < 20 %}<span class="badge blue">Saudável</span>
+{% else %}<span class="badge green">Excelente</span>{% endif %}
+</td>
+</tr>
+{% else %}<tr><td colspan="7" class="empty">Nenhuma unidade com movimento.</td></tr>{% endfor %}
+</tbody></table></div>
 </div>
 
 <div class="panel" style="margin-bottom:18px">
@@ -47,7 +88,10 @@ const labels={{ unit_rows|map(attribute='store')|list|tojson }};
 const revenues={{ unit_rows|map(attribute='revenue')|list|tojson }};
 const expenses={{ unit_rows|map(attribute='expense')|list|tojson }};
 const results={{ unit_rows|map(attribute='result')|list|tojson }};
+const margins=revenues.map((v,i)=>v>0?(results[i]/v*100):0);
 new Chart(document.getElementById('unitsChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Receitas',data:revenues,backgroundColor:'#1d4ed8'},{label:'Despesas',data:expenses,backgroundColor:'#d71920'}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});
 new Chart(document.getElementById('resultChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Resultado',data:results,backgroundColor:results.map(v=>v>=0?'#1d4ed8':'#d71920')}]},options:{responsive:true,plugins:{legend:{display:false}}}});
+new Chart(document.getElementById('breakEvenChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Receita',data:revenues,backgroundColor:'#1d4ed8'},{label:'Ponto de equilíbrio',data:expenses,backgroundColor:'#c9a66b'}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});
+new Chart(document.getElementById('marginChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Margem %',data:margins,backgroundColor:margins.map(v=>v>=20?'#16a34a':v>=10?'#1d4ed8':v>=0?'#eab308':'#d71920')}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>v+'%'}}}}});
 </script>
 {% endblock %}
