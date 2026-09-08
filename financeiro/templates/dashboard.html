@@ -1,15 +1,57 @@
 {% extends 'base.html' %}{% block title %}Painel Financeiro{% endblock %}{% block content %}
-<div class="page-head"><div><h1>Contas a Pagar</h1><p>Visão geral das obrigações financeiras.</p></div><a class="btn primary" href="{{ url_for('new_payable') }}">+ Cadastrar conta</a></div>
-{% if overdue_count %}<div class="alert-banner">🔔 Atenção: existem <strong>{{ overdue_count }}</strong> conta(s) vencida(s) sem baixa.</div>{% endif %}
+<div class="page-head"><div><h1>Contas a Pagar</h1><p>Visão geral por loja, vencimento e pagamentos realizados.</p></div><a class="btn primary" href="{{ url_for('new_payable') }}">+ Cadastrar conta</a></div>
+{% if overdue_count %}<div class="alert-banner">🔔 Atenção: existem <strong>{{ overdue_count }}</strong> conta(s) vencida(s) dentro do filtro atual.</div>{% endif %}
+
 <div class="cards">
-<div class="metric"><span>Em aberto</span><strong>{{ open_total|brl }}</strong></div>
+<div class="metric"><span>Total lançado no filtro</span><strong>{{ filtered_total|brl }}</strong></div>
+<div class="metric green-border"><span>Total pago no filtro</span><strong>{{ filtered_paid|brl }}</strong></div>
+<div class="metric red-border"><span>Saldo em aberto</span><strong>{{ filtered_balance|brl }}</strong></div>
 <div class="metric red-border"><span>Vencido</span><strong>{{ overdue_total|brl }}</strong></div>
 <div class="metric orange-border"><span>Próximos 7 dias</span><strong>{{ due_7_total|brl }}</strong></div>
-<div class="metric green-border"><span>Pago no mês</span><strong>{{ paid_month|brl }}</strong></div>
 </div>
-<form class="filters" method="get"><input name="q" value="{{ search }}" placeholder="Buscar fornecedor, conta ou categoria"><select name="status"><option value="">Todos os status</option>{% for st in ['Vencido','Parcial vencido','Vence em 3 dias','Vence em 7 dias','A vencer','Parcial','Pago'] %}<option value="{{ st }}" {% if status_filter==st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select><button class="btn" type="submit">Filtrar</button></form>
+
+<form class="filters" method="get">
+<input name="q" value="{{ search }}" placeholder="Buscar fornecedor, conta, categoria ou loja">
+<select name="store"><option value="">Todas as lojas</option>{% for s in stores %}<option value="{{ s }}" {% if store_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+<label>Vencimento de<input type="date" name="date_from" value="{{ date_from }}"></label>
+<label>até<input type="date" name="date_to" value="{{ date_to }}"></label>
+<select name="status"><option value="">Todos os status</option>{% for st in ['Vencido','Parcial vencido','Vence em 3 dias','Vence em 7 dias','A vencer','Parcial','Pago'] %}<option value="{{ st }}" {% if status_filter==st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select>
+<button class="btn" type="submit">Filtrar e somar</button><a class="btn" href="{{ url_for('dashboard') }}">Limpar</a>
+</form>
+
+<div class="panel" style="margin-bottom:18px">
+<div class="page-head" style="margin-bottom:10px"><div><h2>Total pago por mês das unidades</h2><p>Selecione o mês para comparar quanto cada loja/unidade pagou.</p></div><input type="month" id="paidMonth" style="max-width:180px"></div>
+<div class="table-wrap"><table><thead><tr><th>Loja / Unidade</th><th>Total pago no mês</th></tr></thead><tbody id="monthlyPaidBody"><tr><td colspan="2" class="empty">Selecione um mês.</td></tr></tbody><tfoot><tr><th>Total geral do mês</th><th id="monthlyGrandTotal">R$ 0,00</th></tr></tfoot></table></div>
+</div>
+
 <div class="legend"><span class="dot red"></span>Vencido <span class="dot yellow"></span>Até 3 dias <span class="dot orange"></span>Até 7 dias <span class="dot blue"></span>A vencer <span class="dot purple"></span>Parcial <span class="dot green"></span>Pago</div>
-<div class="table-wrap"><table><thead><tr><th>Status</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th></th></tr></thead><tbody>
-{% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td><strong>{{ a.supplier }}</strong></td><td>{{ a.description }}</td><td>{{ a.total_amount|brl }}</td><td>{{ a.paid_amount|brl }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Abrir</a></td></tr>{% else %}<tr><td colspan="8" class="empty">Nenhuma conta encontrada.</td></tr>{% endfor %}
+<div class="table-wrap"><table><thead><tr><th>Status</th><th>Loja</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th></th></tr></thead><tbody>
+{% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td><strong>{{ a.store or 'Geral' }}</strong></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td>{{ a.supplier }}</td><td>{{ a.description }}</td><td>{{ a.total_amount|brl }}</td><td>{{ a.paid_amount|brl }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Abrir</a></td></tr>{% else %}<tr><td colspan="9" class="empty">Nenhuma conta encontrada para este filtro.</td></tr>{% endfor %}
 </tbody></table></div>
+
+<div id="paymentData" hidden>
+{% for a in accounts %}{% for p in a.payments %}<span class="payment-item" data-store="{{ a.store or 'Geral' }}" data-date="{{ p.paid_date.isoformat() }}" data-amount="{{ p.amount }}"></span>{% endfor %}{% endfor %}
+</div>
+<script>
+(function(){
+ const monthInput=document.getElementById('paidMonth');
+ const body=document.getElementById('monthlyPaidBody');
+ const grand=document.getElementById('monthlyGrandTotal');
+ const now=new Date(); monthInput.value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+ function money(v){return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+ function render(){
+   const month=monthInput.value, totals={}; let total=0;
+   document.querySelectorAll('.payment-item').forEach(el=>{
+     if((el.dataset.date||'').slice(0,7)===month){
+       const store=el.dataset.store||'Geral', value=parseFloat(el.dataset.amount||'0');
+       totals[store]=(totals[store]||0)+value; total+=value;
+     }
+   });
+   const rows=Object.entries(totals).sort((a,b)=>a[0].localeCompare(b[0]));
+   body.innerHTML=rows.length?rows.map(([store,value])=>'<tr><td><strong>'+store+'</strong></td><td><strong>'+money(value)+'</strong></td></tr>').join(''):'<tr><td colspan="2" class="empty">Nenhum pagamento encontrado neste mês para o filtro atual.</td></tr>';
+   grand.textContent=money(total);
+ }
+ monthInput.addEventListener('change',render); render();
+})();
+</script>
 {% endblock %}
