@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block title %}Alertas Financeiros{% endblock %}{% block content %}
+<div class="page-head"><div><h1>🔔 Alertas de Pagamento</h1><p>Contas vencidas ou próximas do vencimento.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Status</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Saldo</th><th></th></tr></thead><tbody>{% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td><strong>{{ a.supplier }}</strong></td><td>{{ a.description }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Resolver</a></td></tr>{% else %}<tr><td colspan="6" class="empty">✅ Nenhuma conta em alerta.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
