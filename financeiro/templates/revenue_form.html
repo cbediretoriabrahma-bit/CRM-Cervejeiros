@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block title %}Nova Receita{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Nova Receita</h1><p>Registre uma entrada financeira vinculada à unidade.</p></div></div>
+<form method="post" class="panel form-grid">
+<label>Loja / Unidade<select name="store"><option value="">Selecione ou cadastre abaixo</option>{% for s in stores %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></label>
+<label>Nova loja / unidade<input name="new_store" placeholder="Ex.: Mogi Mirim"></label>
+<label>Data da receita<input type="date" name="revenue_date" required value="{{ today.isoformat() }}"></label>
+<label>Categoria<input name="category" value="Vendas" placeholder="Ex.: Vendas, eventos, royalties"></label>
+<label>Descrição<input name="description" required placeholder="Ex.: Faturamento da unidade"></label>
+<label>Valor da receita<input name="amount" required inputmode="decimal" placeholder="0,00"></label>
+<label>Forma de recebimento<select name="payment_method"><option>PIX</option><option>Cartão</option><option>Dinheiro</option><option>Transferência</option><option>Boleto</option><option>Outro</option></select></label>
+<label>Documento / referência<input name="document" placeholder="NF, fechamento, comprovante..."></label>
+<label class="full">Observações<textarea name="notes" rows="4"></textarea></label>
+<div class="full actions"><button class="btn primary" type="submit">Salvar receita</button><a class="btn" href="{{ url_for('dashboard') }}">Cancelar</a></div>
+</form>
+{% endblock %}
