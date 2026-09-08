@@ -2,14 +2,23 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}Contas a Pagar{% endblock %}</title>
+<title>{% block title %}Financeiro Cervejeiros{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='financeiro.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 <header class="topbar">
-  <div><strong>💰 Cervejeiros Financeiro</strong><span>Contas a Pagar</span></div>
+  <div class="brand"><strong>CERVEJEIROS</strong><span>Financeiro • by WOC Group</span></div>
   {% if session.get('finance_user_id') %}
-  <nav><a href="{{ url_for('dashboard') }}">Painel</a><a href="{{ url_for('new_payable') }}">+ Nova conta</a><a href="{{ url_for('alerts') }}">🔔 Alertas</a><a href="{{ url_for('logout') }}">Sair</a></nav>
+  <nav>
+    <a href="{{ url_for('dashboard') }}">Painel</a>
+    <a href="{{ url_for('new_payable') }}">+ Conta</a>
+    <a href="{{ url_for('new_revenue') }}">+ Receita</a>
+    <a href="{{ url_for('revenues') }}">Receitas</a>
+    <a href="{{ url_for('dre') }}">DRE</a>
+    <a href="{{ url_for('alerts') }}">🔔 Alertas</a>
+    <a href="{{ url_for('logout') }}">Sair</a>
+  </nav>
   {% endif %}
 </header>
 <main class="container">
