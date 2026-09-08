@@ -1,6 +1,8 @@
 {% extends 'base.html' %}{% block title %}{{ 'Editar' if account else 'Nova' }} Conta{% endblock %}{% block content %}
-<div class="page-head"><div><h1>{{ 'Editar conta' if account else 'Nova conta a pagar' }}</h1><p>Cadastre o compromisso e, se quiser, já informe uma entrada.</p></div></div>
+<div class="page-head"><div><h1>{{ 'Editar conta' if account else 'Nova conta a pagar' }}</h1><p>Cadastre o compromisso por loja/unidade e, se quiser, já informe uma entrada.</p></div></div>
 <form method="post" class="panel form-grid">
+<label>Loja / Unidade<select name="store"><option value="">Selecione ou cadastre abaixo</option>{% for s in stores %}<option value="{{ s }}" {% if account and account.store==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+<label>Nova loja / unidade<input name="new_store" placeholder="Ex.: Mogi Mirim, Mogi Guaçu, Amparo"></label>
 <label>Fornecedor<input name="supplier" required value="{{ account.supplier if account else '' }}"></label>
 <label>Descrição<input name="description" required value="{{ account.description if account else '' }}"></label>
 <label>Categoria<input name="category" value="{{ account.category if account else '' }}" placeholder="Ex.: Chopp, aluguel, energia, imposto"></label>
