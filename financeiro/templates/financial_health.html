@@ -1,0 +1,31 @@
+{% extends 'base.html' %}{% block title %}Saúde Financeira{% endblock %}{% block content %}
+<div class="page-head"><div><h1>Saúde Financeira</h1><p>Fechamento mensal com diagnóstico automático por unidade e consolidado.</p></div></div>
+
+<form class="filters" method="get">
+<label>Mês<input type="month" name="month" value="{{ month }}"></label>
+<select name="store"><option value="">Todas as unidades</option>{% for s in stores %}<option value="{{ s }}" {% if store_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+<button class="btn primary" type="submit">Analisar</button>
+</form>
+
+<div class="panel" style="margin-bottom:18px">
+<h2>{{ consolidated.store }}</h2>
+<div class="cards">
+<div class="metric blue-border"><span>Receita</span><strong>{{ consolidated.revenue|brl }}</strong></div>
+<div class="metric red-border"><span>Despesas</span><strong>{{ consolidated.expense|brl }}</strong></div>
+<div class="metric {% if consolidated.result >= 0 %}green-border{% else %}red-border{% endif %}"><span>Resultado</span><strong>{{ consolidated.result|brl }}</strong></div>
+<div class="metric"><span>Margem</span><strong>{{ '%.1f'|format(consolidated.margin) }}%</strong></div>
+<div class="metric"><span>Ponto de equilíbrio</span><strong>{{ consolidated.breakeven|brl }}</strong></div>
+<div class="metric red-border"><span>Contas vencidas</span><strong>{{ consolidated.overdue|brl }}</strong></div>
+</div>
+<p><span class="badge {{ consolidated.color }}">{{ consolidated.health }}</span> <strong>Foco principal: {{ consolidated.focus }}</strong></p>
+<p>{{ consolidated.diagnosis }}</p>
+</div>
+
+<div class="table-wrap"><table><thead><tr><th>Unidade</th><th>Saúde</th><th>Receita</th><th>Despesas</th><th>Resultado</th><th>Margem</th><th>Ponto de equilíbrio</th><th>Folga / déficit</th><th>Vencido</th><th>Foco</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><strong>{{ r.store }}</strong></td><td><span class="badge {{ r.color }}">{{ r.health }}</span></td><td>{{ r.revenue|brl }}</td><td>{{ r.expense|brl }}</td><td><strong class="{% if r.result >= 0 %}positive{% else %}negative{% endif %}">{{ r.result|brl }}</strong></td><td>{{ '%.1f'|format(r.margin) }}%</td><td>{{ r.breakeven|brl }}</td><td>{{ r.gap|brl }}</td><td>{{ r.overdue|brl }}</td><td>{{ r.focus }}</td></tr>
+<tr><td colspan="10" style="background:#faf7f0"><strong>Diagnóstico:</strong> {{ r.diagnosis }}</td></tr>
+{% else %}<tr><td colspan="10" class="empty">Nenhuma unidade cadastrada.</td></tr>{% endfor %}
+</tbody></table></div>
+
+<div class="panel"><h2>Leitura das classificações</h2><p><strong>Excelente:</strong> margem de 20% ou mais. <strong>Saudável:</strong> margem entre 10% e 19,9%. <strong>Atenção:</strong> resultado positivo com margem abaixo de 10%. <strong>Crítica:</strong> resultado negativo ou ausência de receita diante de despesas.</p></div>
+{% endblock %}
