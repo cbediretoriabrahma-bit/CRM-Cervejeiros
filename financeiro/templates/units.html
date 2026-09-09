@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Unidades | Financeiro Cervejeiros{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Unidades / Lojas</h1><p>Cadastre e gerencie todas as lojas do Grupo Cervejeiros em um único sistema.</p></div></div>
+
+<div class="grid-two">
+  <div class="panel">
+    <h2>+ Nova unidade</h2>
+    <form method="post" class="form-grid one">
+      <label>Nome da unidade<input name="name" required placeholder="Ex.: Mogi Mirim"></label>
+      <label>Cidade<input name="city" placeholder="Ex.: Mogi Mirim"></label>
+      <label>UF<input name="state" maxlength="2" placeholder="SP"></label>
+      <label>Código interno<input name="code" placeholder="Ex.: MM01"></label>
+      <label>Observações<textarea name="notes" rows="3"></textarea></label>
+      <button class="btn primary" type="submit">Cadastrar unidade</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Como funciona</h2>
+    <p>Cada conta a pagar e cada receita fica ligada a uma unidade. Os filtros, gráficos, DRE e relatórios passam a usar este cadastro central.</p>
+    <p>Ao desativar uma unidade, o histórico financeiro dela não é apagado. Ela apenas deixa de aparecer para novos lançamentos.</p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Unidades cadastradas</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Status</th><th>Unidade</th><th>Cidade / UF</th><th>Código</th><th>Editar</th><th>Ação</th></tr></thead>
+      <tbody>
+      {% for u in units %}
+        <tr>
+          <td><span class="badge {{ 'green' if u.active else 'red' }}">{{ 'Ativa' if u.active else 'Inativa' }}</span></td>
+          <td><strong>{{ u.name }}</strong></td>
+          <td>{{ u.city or '-' }}{% if u.state %} / {{ u.state }}{% endif %}</td>
+          <td>{{ u.code or '-' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('edit_unit', unit_id=u.id) }}" class="filters" style="margin:0">
+              <input name="name" value="{{ u.name }}" required style="min-width:150px">
+              <input name="city" value="{{ u.city or '' }}" placeholder="Cidade" style="min-width:130px">
+              <input name="state" value="{{ u.state or '' }}" maxlength="2" placeholder="UF" style="width:70px;min-width:70px">
+              <input name="code" value="{{ u.code or '' }}" placeholder="Código" style="width:90px;min-width:90px">
+              <input type="hidden" name="notes" value="{{ u.notes or '' }}">
+              <button class="btn small" type="submit">Salvar</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('toggle_unit', unit_id=u.id) }}">
+              <button class="btn small {{ 'danger' if u.active else 'success' }}" type="submit">{{ 'Desativar' if u.active else 'Ativar' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty">Nenhuma unidade cadastrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
