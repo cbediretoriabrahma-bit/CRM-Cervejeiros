@@ -12,6 +12,7 @@
   {% if session.get('finance_user_id') %}
   <nav>
     <a href="{{ url_for('dashboard') }}">Painel</a>
+    <a href="{{ url_for('units') }}">Unidades</a>
     <a href="{{ url_for('new_payable') }}">+ Conta</a>
     <a href="{{ url_for('new_revenue') }}">+ Receita</a>
     <a href="{{ url_for('revenues') }}">Receitas</a>
