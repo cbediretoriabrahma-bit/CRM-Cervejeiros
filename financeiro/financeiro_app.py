@@ -4,6 +4,7 @@ import contas_pagar_app as core
 app = core.app
 db = core.db
 Payable = core.Payable
+PayablePayment = core.PayablePayment
 Revenue = core.Revenue
 login_required = core.login_required
 
@@ -38,7 +39,6 @@ def managed_stores(active_only=True):
         names.update(r[0] for r in db.session.query(Revenue.store).filter(Revenue.store.isnot(None), Revenue.store != "").all())
     return sorted(names)
 
-# Faz todos os filtros e formulários existentes usarem o cadastro central de unidades.
 core.all_stores = managed_stores
 
 @app.before_request
@@ -114,3 +114,71 @@ def toggle_unit(unit_id):
     db.session.commit()
     core.flash("Unidade ativada." if unit.active else "Unidade desativada. Os históricos foram preservados.", "success")
     return core.redirect(core.url_for("units"))
+
+def health_diagnosis(revenue, expense, overdue):
+    result = revenue - expense
+    margin = (result / revenue * 100) if revenue else 0
+    cost_ratio = (expense / revenue * 100) if revenue else (100 if expense else 0)
+    breakeven = expense
+    gap = revenue - breakeven
+
+    if revenue <= 0 and expense > 0:
+        health, color, focus = "Crítica", "red", "Receitas"
+        diagnosis = "A unidade teve despesas, mas não registrou receita no período. A prioridade é recuperar faturamento e revisar imediatamente os gastos indispensáveis."
+    elif result < 0:
+        health, color = "Crítica", "red"
+        if revenue < expense * 0.85:
+            focus = "Receitas"
+            diagnosis = "A receita ficou significativamente abaixo do ponto de equilíbrio. O foco principal deve ser aumentar faturamento, sem deixar de revisar despesas que possam ser reduzidas."
+        else:
+            focus = "Custos"
+            diagnosis = "A receita está próxima do necessário para equilibrar a operação, mas os custos estão consumindo o resultado. O foco principal deve ser redução e renegociação de despesas."
+    elif margin < 10:
+        health, color, focus = "Atenção", "yellow", "Custos"
+        diagnosis = "A unidade está positiva, porém com margem apertada. Os custos estão consumindo grande parte da receita; revise fornecedores, despesas fixas e gastos operacionais."
+    elif margin < 20:
+        health, color, focus = "Saudável", "blue", "Margem"
+        diagnosis = "A unidade está saudável e acima do ponto de equilíbrio, mas ainda há espaço para melhorar margem e eficiência dos custos."
+    else:
+        health, color, focus = "Excelente", "green", "Manter desempenho"
+        diagnosis = "A unidade apresenta resultado e margem fortes. Mantenha controle de custos, crescimento de receita e disciplina de pagamentos."
+
+    if overdue > 0:
+        diagnosis += " Há contas vencidas em aberto, que também exigem atenção para preservar o caixa e evitar encargos."
+
+    return {
+        "revenue": round(revenue, 2), "expense": round(expense, 2), "result": round(result, 2),
+        "margin": round(margin, 1), "cost_ratio": round(cost_ratio, 1), "breakeven": round(breakeven, 2),
+        "gap": round(gap, 2), "overdue": round(overdue, 2), "health": health, "color": color,
+        "focus": focus, "diagnosis": diagnosis,
+    }
+
+@app.route("/saude-financeira")
+@login_required
+def financial_health():
+    month = core.request.args.get("month", core.date.today().strftime("%Y-%m"))
+    store_filter = core.request.args.get("store", "").strip()
+    start, end = core.parse_month(month)
+    stores = managed_stores(active_only=False)
+    selected = [store_filter] if store_filter else stores
+    rows = []
+
+    for store in selected:
+        revenue = sum(r.amount or 0 for r in Revenue.query.filter(
+            Revenue.store == store, Revenue.revenue_date >= start, Revenue.revenue_date < end).all())
+        expense = sum(p.amount or 0 for p in PayablePayment.query.join(Payable).filter(
+            Payable.store == store, PayablePayment.paid_date >= start, PayablePayment.paid_date < end).all())
+        overdue = sum(a.balance for a in Payable.query.filter(Payable.store == store).all()
+                      if a.balance > 0 and a.due_date < core.date.today())
+        item = health_diagnosis(revenue, expense, overdue)
+        item["store"] = store
+        rows.append(item)
+
+    total_revenue = sum(r["revenue"] for r in rows)
+    total_expense = sum(r["expense"] for r in rows)
+    total_overdue = sum(r["overdue"] for r in rows)
+    consolidated = health_diagnosis(total_revenue, total_expense, total_overdue)
+    consolidated["store"] = store_filter or "Consolidado do Grupo"
+
+    return core.render_template("financial_health.html", month=month, stores=stores,
+                                store_filter=store_filter, rows=rows, consolidated=consolidated)
