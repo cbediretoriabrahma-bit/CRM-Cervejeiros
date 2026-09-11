@@ -16,8 +16,9 @@ def _find_lead_by_phone(phone):
 
 
 def _reply_for_message(lead, text):
-    """Fluxo de qualificação com EXATAMENTE uma pergunta por mensagem.
-    Cada nova resposta do interessado avança somente uma etapa.
+    """Fluxo com uma única pergunta por mensagem.
+    Depois que o interessado informa o horário, envia confirmação e encerra
+    as perguntas automáticas para não repetir a última pergunta.
     """
     inbound_count = crm.Interaction.query.filter_by(
         lead_id=lead.id, channel="WhatsApp", direction="in"
@@ -38,7 +39,11 @@ def _reply_for_message(lead, text):
         return f"Certo, {first}. Você tem interesse em conhecer o modelo em uma reunião rápida?"
     if inbound_count == 7:
         return f"Ótimo, {first}. Qual dia funciona melhor para você?"
-    return f"Perfeito, {first}. Qual horário funciona melhor para você nesse dia?"
+    if inbound_count == 8:
+        return f"Perfeito, {first}. Qual horário funciona melhor para você nesse dia?"
+    if inbound_count == 9:
+        return f"Perfeito, {first}! Recebi seu dia e horário. Nossa equipe vai confirmar a reunião com você por aqui. 🍻"
+    return None
 
 
 def _already_processed(message_id):
@@ -136,7 +141,6 @@ def whatsapp_webhook():
                     )
                 )
 
-            # Salva o lead e a mensagem recebida antes de responder.
             crm.db.session.commit()
             crm.app.logger.warning(
                 "WhatsApp salvo: lead_id=%s criado=%s telefone=%s message_id=%s owner_id=%s",
@@ -145,6 +149,9 @@ def whatsapp_webhook():
 
             if os.getenv("AUTO_REPLY_WHATSAPP", "0") == "1":
                 reply = _reply_for_message(lead, text)
+                if not reply:
+                    crm.app.logger.warning("Fluxo automatico encerrado para lead=%s", lead.id)
+                    continue
                 ok, detail = crm.send_whatsapp_cloud(lead.phone, reply)
                 if ok:
                     crm.db.session.add(
