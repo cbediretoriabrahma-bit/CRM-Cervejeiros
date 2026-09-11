@@ -16,32 +16,40 @@ def _find_lead_by_phone(phone):
 
 
 def _reply_for_message(lead, text):
-    objective = (
-        "responder à mensagem recebida no WhatsApp e avançar a qualificação. "
-        f"Mensagem atual do cliente: {text}. "
-        "Não repita literalmente a última resposta enviada. Faça uma pergunta útil para avançar."
-    )
-    reply = crm.ai_reply(lead, objective)
+    """Sequência fixa de qualificação enquanto a IA estiver indisponível.
+    Usa o número de mensagens recebidas para nunca voltar à mensagem inicial.
+    """
+    inbound_count = crm.Interaction.query.filter_by(
+        lead_id=lead.id, channel="WhatsApp", direction="in"
+    ).count()
+    first = (lead.name or "Olá").split()[0]
 
-    last_out = (
-        crm.Interaction.query.filter_by(lead_id=lead.id, channel="WhatsApp", direction="out")
-        .order_by(crm.Interaction.id.desc())
-        .first()
+    if inbound_count <= 1:
+        return (
+            f"Olá, {first}! 🍻 Obrigado pelo interesse na Cervejeiros. "
+            "Para começarmos sua qualificação, em qual cidade e estado você pretende operar?"
+        )
+    if inbound_count == 2:
+        return (
+            f"Perfeito, {first}! Qual faixa de investimento você pretende disponibilizar "
+            "para iniciar a operação?"
+        )
+    if inbound_count == 3:
+        return (
+            f"Ótimo, {first}. Em quanto tempo você gostaria de iniciar a operação Cervejeiros?"
+        )
+    if inbound_count == 4:
+        return (
+            f"Obrigado, {first}. Você já é empreendedor ou seria seu primeiro negócio?"
+        )
+    if inbound_count == 5:
+        return (
+            f"Perfeito, {first}. Você tem interesse em uma reunião rápida para conhecer o modelo "
+            "e verificar disponibilidade na sua região?"
+        )
+    return (
+        f"Certo, {first}. Qual dia e horário funcionam melhor para fazermos uma conversa rápida?"
     )
-    if last_out and (last_out.message or "").strip() == (reply or "").strip():
-        inbound_count = crm.Interaction.query.filter_by(
-            lead_id=lead.id, channel="WhatsApp", direction="in"
-        ).count()
-        first = (lead.name or "Olá").split()[0]
-        if inbound_count <= 1:
-            reply = f"Perfeito, {first}! Para continuarmos, em qual cidade você pretende operar?"
-        elif inbound_count == 2:
-            reply = f"Ótimo, {first}. Qual faixa de investimento você pretende disponibilizar para iniciar a operação?"
-        elif inbound_count == 3:
-            reply = f"Obrigado, {first}. Em quanto tempo você gostaria de iniciar a operação Cervejeiros?"
-        else:
-            reply = f"Perfeito, {first}. Posso agendar uma conversa rápida para avançarmos? Qual dia e horário funcionam melhor para você?"
-    return reply
 
 
 def _already_processed(message_id):
@@ -54,7 +62,6 @@ def _already_processed(message_id):
 
 
 def _recent_duplicate(lead, text):
-    """Proteção extra caso a Meta reentregue a mesma mensagem com outro evento/id."""
     if not lead or not text:
         return False
     cutoff = datetime.utcnow() - timedelta(seconds=20)
@@ -140,8 +147,6 @@ def whatsapp_webhook():
                     )
                 )
 
-            # Primeiro grava definitivamente o lead e a mensagem recebida.
-            # Assim, qualquer falha posterior da IA/API não desfaz o novo lead.
             crm.db.session.commit()
             crm.app.logger.warning(
                 "WhatsApp salvo: lead_id=%s criado=%s telefone=%s message_id=%s owner_id=%s",
@@ -158,7 +163,7 @@ def whatsapp_webhook():
                             channel="WhatsApp",
                             direction="out",
                             message=reply,
-                            ai_generated=True,
+                            ai_generated=False,
                         )
                     )
                     crm.db.session.commit()
