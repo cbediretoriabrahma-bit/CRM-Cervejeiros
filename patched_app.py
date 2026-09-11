@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta
 from flask import request
 
@@ -16,10 +17,6 @@ def _find_lead_by_phone(phone):
 
 
 def _reply_for_message(lead, text):
-    """Fluxo com uma única pergunta por mensagem.
-    Depois que o interessado informa o horário, envia confirmação e encerra
-    as perguntas automáticas para não repetir a última pergunta.
-    """
     inbound_count = crm.Interaction.query.filter_by(
         lead_id=lead.id, channel="WhatsApp", direction="in"
     ).count()
@@ -44,6 +41,98 @@ def _reply_for_message(lead, text):
     if inbound_count == 9:
         return f"Perfeito, {first}! Recebi seu dia e horário. Nossa equipe vai confirmar a reunião com você por aqui. 🍻"
     return None
+
+
+def _parse_investment(text):
+    cleaned = (text or "").lower().replace("r$", "").replace(" ", "")
+    mult = 1
+    if "mil" in cleaned or cleaned.endswith("k"):
+        mult = 1000
+    nums = re.findall(r"\d+[\d\.,]*", cleaned)
+    if not nums:
+        return 0
+    raw = nums[0]
+    if mult == 1000:
+        raw = raw.replace(".", "").replace(",", ".")
+        try:
+            return float(raw) * 1000
+        except Exception:
+            return 0
+    raw = raw.replace(".", "").replace(",", ".")
+    try:
+        return float(raw)
+    except Exception:
+        return 0
+
+
+def _parse_timeframe(text):
+    t = (text or "").lower()
+    if any(x in t for x in ["imediato", "imediatamente", "agora", "já", "ja"]):
+        return "Imediato"
+    if "30" in t or "1 mês" in t or "1 mes" in t:
+        return "Até 30 dias"
+    if any(x in t for x in ["1 a 3", "2 meses", "3 meses"]):
+        return "1 a 3 meses"
+    if any(x in t for x in ["3 a 6", "4 meses", "5 meses", "6 meses"]):
+        return "3 a 6 meses"
+    if any(x in t for x in ["mais de 6", "7 meses", "8 meses", "9 meses", "10 meses", "11 meses", "1 ano"]):
+        return "Mais de 6 meses"
+    return "Sem prazo"
+
+
+def _yes_no(text):
+    t = (text or "").strip().lower()
+    if any(x in t for x in ["sim", "sou", "tenho", "já", "ja", "quero", "tenho interesse", "claro"]):
+        return "Sim"
+    if any(x in t for x in ["não", "nao", "nunca", "primeiro negócio", "primeiro negocio", "não tenho", "nao tenho"]):
+        return "Não"
+    return "Talvez"
+
+
+def _append_note(lead, line):
+    current = (lead.notes or "").strip()
+    lead.notes = (current + ("\n" if current else "") + line).strip()
+
+
+def _apply_answer_to_lead(lead, text):
+    """Salva cada resposta no cadastro e requalifica o lead/pipeline automaticamente."""
+    inbound_count = crm.Interaction.query.filter_by(
+        lead_id=lead.id, channel="WhatsApp", direction="in"
+    ).count()
+
+    if inbound_count == 2:
+        lead.city = text.strip()[:120]
+    elif inbound_count == 3:
+        lead.state = text.strip().upper()[:40]
+    elif inbound_count == 4:
+        value = _parse_investment(text)
+        if value > 0:
+            lead.investment = value
+    elif inbound_count == 5:
+        lead.timeframe = _parse_timeframe(text)
+    elif inbound_count == 6:
+        lead.entrepreneur = _yes_no(text)
+    elif inbound_count == 7:
+        lead.meeting_interest = _yes_no(text)
+    elif inbound_count == 8:
+        _append_note(lead, f"Dia sugerido para reunião: {text.strip()}")
+    elif inbound_count == 9:
+        _append_note(lead, f"Horário sugerido para reunião: {text.strip()}")
+
+    # Recalcula score, temperatura e etapa a cada resposta.
+    crm.requalify(lead, preserve=False)
+
+    # Ao informar dia + horário e aceitar reunião, move para Reunião Agendada.
+    if inbound_count >= 9 and lead.meeting_interest == "Sim":
+        lead.stage = "Reunião Agendada"
+
+    crm.db.session.add(
+        crm.AutomationLog(
+            lead_id=lead.id,
+            action="Pipeline atualizado pelo WhatsApp",
+            detail=f"Resposta {inbound_count}; score {lead.score}; etapa {lead.stage}",
+        )
+    )
 
 
 def _already_processed(message_id):
@@ -131,6 +220,9 @@ def whatsapp_webhook():
                 )
             )
             lead.last_contact = datetime.utcnow()
+            crm.db.session.flush()
+
+            _apply_answer_to_lead(lead, text)
 
             if message_id:
                 crm.db.session.add(
@@ -143,8 +235,8 @@ def whatsapp_webhook():
 
             crm.db.session.commit()
             crm.app.logger.warning(
-                "WhatsApp salvo: lead_id=%s criado=%s telefone=%s message_id=%s owner_id=%s",
-                lead.id, created, crm.normalize_phone(phone), message_id, lead.owner_id
+                "WhatsApp salvo: lead_id=%s criado=%s telefone=%s etapa=%s score=%s message_id=%s owner_id=%s",
+                lead.id, created, crm.normalize_phone(phone), lead.stage, lead.score, message_id, lead.owner_id
             )
 
             if os.getenv("AUTO_REPLY_WHATSAPP", "0") == "1":
