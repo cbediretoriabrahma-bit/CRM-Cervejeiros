@@ -16,8 +16,8 @@ def _find_lead_by_phone(phone):
 
 
 def _reply_for_message(lead, text):
-    """Sequência fixa de qualificação enquanto a IA estiver indisponível.
-    Usa o número de mensagens recebidas para nunca voltar à mensagem inicial.
+    """Fluxo de qualificação com EXATAMENTE uma pergunta por mensagem.
+    Cada nova resposta do interessado avança somente uma etapa.
     """
     inbound_count = crm.Interaction.query.filter_by(
         lead_id=lead.id, channel="WhatsApp", direction="in"
@@ -25,31 +25,20 @@ def _reply_for_message(lead, text):
     first = (lead.name or "Olá").split()[0]
 
     if inbound_count <= 1:
-        return (
-            f"Olá, {first}! 🍻 Obrigado pelo interesse na Cervejeiros. "
-            "Para começarmos sua qualificação, em qual cidade e estado você pretende operar?"
-        )
+        return f"Olá, {first}! 🍻 Obrigado pelo interesse na Cervejeiros. Em qual cidade você pretende operar?"
     if inbound_count == 2:
-        return (
-            f"Perfeito, {first}! Qual faixa de investimento você pretende disponibilizar "
-            "para iniciar a operação?"
-        )
+        return f"Perfeito, {first}! Em qual estado fica essa cidade?"
     if inbound_count == 3:
-        return (
-            f"Ótimo, {first}. Em quanto tempo você gostaria de iniciar a operação Cervejeiros?"
-        )
+        return f"Ótimo, {first}. Qual faixa de investimento você pretende disponibilizar para iniciar a operação?"
     if inbound_count == 4:
-        return (
-            f"Obrigado, {first}. Você já é empreendedor ou seria seu primeiro negócio?"
-        )
+        return f"Obrigado, {first}. Em quanto tempo você gostaria de iniciar a operação Cervejeiros?"
     if inbound_count == 5:
-        return (
-            f"Perfeito, {first}. Você tem interesse em uma reunião rápida para conhecer o modelo "
-            "e verificar disponibilidade na sua região?"
-        )
-    return (
-        f"Certo, {first}. Qual dia e horário funcionam melhor para fazermos uma conversa rápida?"
-    )
+        return f"Perfeito, {first}. Você já é empreendedor?"
+    if inbound_count == 6:
+        return f"Certo, {first}. Você tem interesse em conhecer o modelo em uma reunião rápida?"
+    if inbound_count == 7:
+        return f"Ótimo, {first}. Qual dia funciona melhor para você?"
+    return f"Perfeito, {first}. Qual horário funciona melhor para você nesse dia?"
 
 
 def _already_processed(message_id):
@@ -147,6 +136,7 @@ def whatsapp_webhook():
                     )
                 )
 
+            # Salva o lead e a mensagem recebida antes de responder.
             crm.db.session.commit()
             crm.app.logger.warning(
                 "WhatsApp salvo: lead_id=%s criado=%s telefone=%s message_id=%s owner_id=%s",
