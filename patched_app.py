@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import request
 
 import app as crm
@@ -37,8 +37,10 @@ def _reply_for_message(lead, text):
             reply = f"Perfeito, {first}! Para continuarmos, em qual cidade você pretende operar?"
         elif inbound_count == 2:
             reply = f"Ótimo, {first}. Qual faixa de investimento você pretende disponibilizar para iniciar a operação?"
-        else:
+        elif inbound_count == 3:
             reply = f"Obrigado, {first}. Em quanto tempo você gostaria de iniciar a operação Cervejeiros?"
+        else:
+            reply = f"Perfeito, {first}. Posso agendar uma conversa rápida para avançarmos? Qual dia e horário funcionam melhor para você?"
     return reply
 
 
@@ -48,6 +50,20 @@ def _already_processed(message_id):
     return crm.AutomationLog.query.filter_by(
         action="WhatsApp message processada",
         detail=message_id,
+    ).first() is not None
+
+
+def _recent_duplicate(lead, text):
+    """Proteção extra caso a Meta reentregue a mesma mensagem com outro evento/id."""
+    if not lead or not text:
+        return False
+    cutoff = datetime.utcnow() - timedelta(seconds=20)
+    return crm.Interaction.query.filter(
+        crm.Interaction.lead_id == lead.id,
+        crm.Interaction.channel == "WhatsApp",
+        crm.Interaction.direction == "in",
+        crm.Interaction.message == text,
+        crm.Interaction.created_at >= cutoff,
     ).first() is not None
 
 
@@ -69,7 +85,7 @@ def whatsapp_webhook():
         for m in messages:
             message_id = m.get("id", "")
             if _already_processed(message_id):
-                crm.app.logger.info("Webhook duplicado ignorado: %s", message_id)
+                crm.app.logger.warning("Webhook duplicado ignorado: %s", message_id)
                 continue
 
             phone = m.get("from", "")
@@ -79,6 +95,10 @@ def whatsapp_webhook():
 
             lead = _find_lead_by_phone(phone)
             created = False
+
+            if lead and _recent_duplicate(lead, text):
+                crm.app.logger.warning("Mensagem repetida ignorada para lead=%s", lead.id)
+                continue
 
             if not lead:
                 created = True
@@ -110,7 +130,6 @@ def whatsapp_webhook():
                 )
             )
             lead.last_contact = datetime.utcnow()
-            crm.db.session.flush()
 
             if message_id:
                 crm.db.session.add(
@@ -120,6 +139,14 @@ def whatsapp_webhook():
                         detail=message_id,
                     )
                 )
+
+            # Primeiro grava definitivamente o lead e a mensagem recebida.
+            # Assim, qualquer falha posterior da IA/API não desfaz o novo lead.
+            crm.db.session.commit()
+            crm.app.logger.warning(
+                "WhatsApp salvo: lead_id=%s criado=%s telefone=%s message_id=%s owner_id=%s",
+                lead.id, created, crm.normalize_phone(phone), message_id, lead.owner_id
+            )
 
             if os.getenv("AUTO_REPLY_WHATSAPP", "0") == "1":
                 reply = _reply_for_message(lead, text)
@@ -134,14 +161,11 @@ def whatsapp_webhook():
                             ai_generated=True,
                         )
                     )
+                    crm.db.session.commit()
                 else:
                     crm.app.logger.warning("Falha ao responder WhatsApp lead=%s: %s", lead.id, detail)
+                    crm.db.session.rollback()
 
-            crm.db.session.commit()
-            crm.app.logger.info(
-                "WhatsApp recebido: lead_id=%s criado=%s telefone=%s message_id=%s",
-                lead.id, created, crm.normalize_phone(phone), message_id
-            )
     except Exception as e:
         crm.app.logger.warning("Webhook WhatsApp: %s", e)
         crm.db.session.rollback()
