@@ -9,7 +9,6 @@ def _find_lead_by_phone(phone):
     target = crm.normalize_phone(phone)
     if not target:
         return None
-    # Evita casar números diferentes só por um trecho do telefone.
     for lead in crm.Lead.query.order_by(crm.Lead.id.desc()).all():
         if crm.normalize_phone(lead.phone) == target:
             return lead
@@ -43,6 +42,15 @@ def _reply_for_message(lead, text):
     return reply
 
 
+def _already_processed(message_id):
+    if not message_id:
+        return False
+    return crm.AutomationLog.query.filter_by(
+        action="WhatsApp message processada",
+        detail=message_id,
+    ).first() is not None
+
+
 def whatsapp_webhook():
     if request.method == "GET":
         if request.args.get("hub.verify_token") == os.getenv("WHATSAPP_VERIFY_TOKEN"):
@@ -59,6 +67,11 @@ def whatsapp_webhook():
             contact_name = ((contacts[0].get("profile") or {}).get("name") or "").strip()
 
         for m in messages:
+            message_id = m.get("id", "")
+            if _already_processed(message_id):
+                crm.app.logger.info("Webhook duplicado ignorado: %s", message_id)
+                continue
+
             phone = m.get("from", "")
             text = (m.get("text") or {}).get("body", "")
             if not phone or not text:
@@ -99,6 +112,15 @@ def whatsapp_webhook():
             lead.last_contact = datetime.utcnow()
             crm.db.session.flush()
 
+            if message_id:
+                crm.db.session.add(
+                    crm.AutomationLog(
+                        lead_id=lead.id,
+                        action="WhatsApp message processada",
+                        detail=message_id,
+                    )
+                )
+
             if os.getenv("AUTO_REPLY_WHATSAPP", "0") == "1":
                 reply = _reply_for_message(lead, text)
                 ok, detail = crm.send_whatsapp_cloud(lead.phone, reply)
@@ -117,8 +139,8 @@ def whatsapp_webhook():
 
             crm.db.session.commit()
             crm.app.logger.info(
-                "WhatsApp recebido: lead_id=%s criado=%s telefone=%s",
-                lead.id, created, crm.normalize_phone(phone)
+                "WhatsApp recebido: lead_id=%s criado=%s telefone=%s message_id=%s",
+                lead.id, created, crm.normalize_phone(phone), message_id
             )
     except Exception as e:
         crm.app.logger.warning("Webhook WhatsApp: %s", e)
@@ -127,6 +149,5 @@ def whatsapp_webhook():
     return "ok", 200
 
 
-# Mantém a rota já registrada em app.py, mas troca a função executada por esta versão.
 crm.app.view_functions["whatsapp_webhook"] = whatsapp_webhook
 app = crm.app
