@@ -305,16 +305,8 @@ def _find_instagram_lead(sender_id):
 
 
 def _instagram_interest_message(text):
-    t = (text or "").lower().strip()
-    signals = [
-        "tenho interesse", "quero saber mais", "quero informações", "quero informacoes",
-        "como funciona", "geladeira cervejeiros", "geladeira de chopp", "autoatendimento",
-        "licenciamento", "licença", "licenca", "franquia", "franqueado", "franqueada",
-        "investimento", "investir", "quero abrir", "quero ser licenciado", "quero ser licenciada",
-        "modelo de negócio", "modelo de negocio", "valor para começar", "valor para comecar",
-        "quanto custa para começar", "quanto custa para comecar"
-    ]
-    return any(signal in t for signal in signals)
+    # Mantida apenas por compatibilidade. Toda mensagem nova do Direct agora é tratada como lead.
+    return bool((text or "").strip())
 
 
 def _instagram_already_processed(message_id):
@@ -399,11 +391,6 @@ def instagram_webhook():
 
                 lead = _find_instagram_lead(sender_id)
 
-                # Só transforma em lead comercial quando a primeira mensagem demonstra interesse.
-                if not lead and not _instagram_interest_message(text):
-                    crm.app.logger.warning("Instagram não comercial ignorado: sender=%s", sender_id)
-                    continue
-
                 if lead and _instagram_recent_duplicate(lead, text):
                     crm.app.logger.warning("Instagram repetido ignorado para lead=%s", lead.id)
                     continue
@@ -427,7 +414,7 @@ def instagram_webhook():
                         crm.AutomationLog(
                             lead_id=lead.id,
                             action="Lead criado pelo Instagram",
-                            detail="Interesse comercial recebido automaticamente pelo Direct do Instagram.",
+                            detail="Nova mensagem recebida automaticamente pelo Direct do Instagram.",
                         )
                     )
 
