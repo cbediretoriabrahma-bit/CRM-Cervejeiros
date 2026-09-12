@@ -1,5 +1,7 @@
 import os
 import re
+import json
+import urllib.request
 from datetime import datetime, timedelta
 from flask import request
 
@@ -19,6 +21,33 @@ def _find_lead_by_phone(phone):
 def _reply_for_message(lead, text):
     inbound_count = crm.Interaction.query.filter_by(
         lead_id=lead.id, channel="WhatsApp", direction="in"
+    ).count()
+    first = (lead.name or "Olá").split()[0]
+
+    if inbound_count <= 1:
+        return f"Olá, {first}! 🍻 Obrigado pelo interesse na Cervejeiros. Em qual cidade você pretende operar?"
+    if inbound_count == 2:
+        return f"Perfeito, {first}! Em qual estado fica essa cidade?"
+    if inbound_count == 3:
+        return f"Ótimo, {first}. Qual faixa de investimento você pretende disponibilizar para iniciar a operação?"
+    if inbound_count == 4:
+        return f"Obrigado, {first}. Em quanto tempo você gostaria de iniciar a operação Cervejeiros?"
+    if inbound_count == 5:
+        return f"Perfeito, {first}. Você já é empreendedor?"
+    if inbound_count == 6:
+        return f"Certo, {first}. Você tem interesse em conhecer o modelo em uma reunião rápida?"
+    if inbound_count == 7:
+        return f"Ótimo, {first}. Qual dia funciona melhor para você?"
+    if inbound_count == 8:
+        return f"Perfeito, {first}. Qual horário funciona melhor para você nesse dia?"
+    if inbound_count == 9:
+        return f"Perfeito, {first}! Recebi seu dia e horário. Nossa equipe vai confirmar a reunião com você por aqui. 🍻"
+    return None
+
+
+def _reply_for_instagram(lead):
+    inbound_count = crm.Interaction.query.filter_by(
+        lead_id=lead.id, channel="Instagram", direction="in"
     ).count()
     first = (lead.name or "Olá").split()[0]
 
@@ -95,11 +124,13 @@ def _append_note(lead, line):
 
 
 def _apply_answer_to_lead(lead, text):
-    """Salva cada resposta no cadastro e requalifica o lead/pipeline automaticamente."""
     inbound_count = crm.Interaction.query.filter_by(
         lead_id=lead.id, channel="WhatsApp", direction="in"
     ).count()
+    _apply_answer_by_count(lead, text, inbound_count, "WhatsApp")
 
+
+def _apply_answer_by_count(lead, text, inbound_count, channel):
     if inbound_count == 2:
         lead.city = text.strip()[:120]
     elif inbound_count == 3:
@@ -119,17 +150,14 @@ def _apply_answer_to_lead(lead, text):
     elif inbound_count == 9:
         _append_note(lead, f"Horário sugerido para reunião: {text.strip()}")
 
-    # Recalcula score, temperatura e etapa a cada resposta.
     crm.requalify(lead, preserve=False)
-
-    # Ao informar dia + horário e aceitar reunião, move para Reunião Agendada.
     if inbound_count >= 9 and lead.meeting_interest == "Sim":
         lead.stage = "Reunião Agendada"
 
     crm.db.session.add(
         crm.AutomationLog(
             lead_id=lead.id,
-            action="Pipeline atualizado pelo WhatsApp",
+            action=f"Pipeline atualizado pelo {channel}",
             detail=f"Resposta {inbound_count}; score {lead.score}; etapa {lead.stage}",
         )
     )
@@ -221,7 +249,6 @@ def whatsapp_webhook():
             )
             lead.last_contact = datetime.utcnow()
             crm.db.session.flush()
-
             _apply_answer_to_lead(lead, text)
 
             if message_id:
@@ -267,5 +294,207 @@ def whatsapp_webhook():
     return "ok", 200
 
 
+# ---------------- Instagram Direct ----------------
+
+def _instagram_lead_key(sender_id):
+    return f"IG-{sender_id}"
+
+
+def _find_instagram_lead(sender_id):
+    return crm.Lead.query.filter_by(phone=_instagram_lead_key(sender_id), source="Instagram").order_by(crm.Lead.id.desc()).first()
+
+
+def _instagram_interest_message(text):
+    t = (text or "").lower().strip()
+    signals = [
+        "tenho interesse", "quero saber mais", "quero informações", "quero informacoes",
+        "como funciona", "geladeira cervejeiros", "geladeira de chopp", "autoatendimento",
+        "licenciamento", "licença", "licenca", "franquia", "franqueado", "franqueada",
+        "investimento", "investir", "quero abrir", "quero ser licenciado", "quero ser licenciada",
+        "modelo de negócio", "modelo de negocio", "valor para começar", "valor para comecar",
+        "quanto custa para começar", "quanto custa para comecar"
+    ]
+    return any(signal in t for signal in signals)
+
+
+def _instagram_already_processed(message_id):
+    if not message_id:
+        return False
+    return crm.AutomationLog.query.filter_by(
+        action="Instagram message processada", detail=message_id
+    ).first() is not None
+
+
+def _instagram_recent_duplicate(lead, text):
+    if not lead or not text:
+        return False
+    cutoff = datetime.utcnow() - timedelta(seconds=20)
+    return crm.Interaction.query.filter(
+        crm.Interaction.lead_id == lead.id,
+        crm.Interaction.channel == "Instagram",
+        crm.Interaction.direction == "in",
+        crm.Interaction.message == text,
+        crm.Interaction.created_at >= cutoff,
+    ).first() is not None
+
+
+def _instagram_profile_name(sender_id):
+    token = os.getenv("INSTAGRAM_ACCESS_TOKEN")
+    if not token:
+        return ""
+    try:
+        url = f"https://graph.instagram.com/v23.0/{sender_id}?fields=name,username&access_token={token}"
+        with urllib.request.urlopen(url, timeout=12) as response:
+            data = json.loads(response.read().decode())
+        return (data.get("name") or data.get("username") or "").strip()
+    except Exception:
+        return ""
+
+
+def send_instagram_message(recipient_id, message):
+    token = os.getenv("INSTAGRAM_ACCESS_TOKEN")
+    ig_user_id = os.getenv("INSTAGRAM_USER_ID")
+    if not token or not ig_user_id:
+        return False, "Instagram API não configurada."
+
+    url = f"https://graph.instagram.com/v23.0/{ig_user_id}/messages"
+    payload = json.dumps({
+        "recipient": {"id": str(recipient_id)},
+        "message": {"text": message}
+    }).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            return True, response.read().decode()
+    except Exception as exc:
+        return False, str(exc)
+
+
+def instagram_webhook():
+    if request.method == "GET":
+        verify_token = os.getenv("INSTAGRAM_VERIFY_TOKEN") or os.getenv("WHATSAPP_VERIFY_TOKEN")
+        if request.args.get("hub.verify_token") == verify_token:
+            return request.args.get("hub.challenge", ""), 200
+        return "verification failed", 403
+
+    data = request.get_json(silent=True) or {}
+    try:
+        for entry in data.get("entry", []):
+            for event in entry.get("messaging", []):
+                sender_id = str((event.get("sender") or {}).get("id") or "")
+                message = event.get("message") or {}
+                message_id = str(message.get("mid") or "")
+                text = str(message.get("text") or "").strip()
+
+                if not sender_id or not text or message.get("is_echo"):
+                    continue
+                if _instagram_already_processed(message_id):
+                    crm.app.logger.warning("Instagram duplicado ignorado: %s", message_id)
+                    continue
+
+                lead = _find_instagram_lead(sender_id)
+
+                # Só transforma em lead comercial quando a primeira mensagem demonstra interesse.
+                if not lead and not _instagram_interest_message(text):
+                    crm.app.logger.warning("Instagram não comercial ignorado: sender=%s", sender_id)
+                    continue
+
+                if lead and _instagram_recent_duplicate(lead, text):
+                    crm.app.logger.warning("Instagram repetido ignorado para lead=%s", lead.id)
+                    continue
+
+                created = False
+                if not lead:
+                    created = True
+                    profile_name = _instagram_profile_name(sender_id)
+                    lead = crm.Lead(
+                        name=profile_name or f"Instagram {sender_id[-4:]}",
+                        phone=_instagram_lead_key(sender_id),
+                        source="Instagram",
+                        timeframe="Sem prazo",
+                        stage="Novo Lead",
+                    )
+                    crm.db.session.add(lead)
+                    crm.db.session.flush()
+                    crm.assign_round_robin(lead)
+                    crm.requalify(lead, preserve=False)
+                    crm.db.session.add(
+                        crm.AutomationLog(
+                            lead_id=lead.id,
+                            action="Lead criado pelo Instagram",
+                            detail="Interesse comercial recebido automaticamente pelo Direct do Instagram.",
+                        )
+                    )
+
+                crm.db.session.add(
+                    crm.Interaction(
+                        lead_id=lead.id,
+                        channel="Instagram",
+                        direction="in",
+                        message=text,
+                    )
+                )
+                lead.last_contact = datetime.utcnow()
+                crm.db.session.flush()
+
+                inbound_count = crm.Interaction.query.filter_by(
+                    lead_id=lead.id, channel="Instagram", direction="in"
+                ).count()
+                _apply_answer_by_count(lead, text, inbound_count, "Instagram")
+
+                if message_id:
+                    crm.db.session.add(
+                        crm.AutomationLog(
+                            lead_id=lead.id,
+                            action="Instagram message processada",
+                            detail=message_id,
+                        )
+                    )
+
+                crm.db.session.commit()
+                crm.app.logger.warning(
+                    "Instagram salvo: lead_id=%s criado=%s sender=%s etapa=%s score=%s",
+                    lead.id, created, sender_id, lead.stage, lead.score
+                )
+
+                if os.getenv("AUTO_REPLY_INSTAGRAM", "0") == "1":
+                    reply = _reply_for_instagram(lead)
+                    if not reply:
+                        crm.app.logger.warning("Fluxo Instagram encerrado para lead=%s", lead.id)
+                        continue
+                    ok, detail = send_instagram_message(sender_id, reply)
+                    if ok:
+                        crm.db.session.add(
+                            crm.Interaction(
+                                lead_id=lead.id,
+                                channel="Instagram",
+                                direction="out",
+                                message=reply,
+                                ai_generated=False,
+                            )
+                        )
+                        crm.db.session.commit()
+                    else:
+                        crm.app.logger.warning("Falha ao responder Instagram lead=%s: %s", lead.id, detail)
+                        crm.db.session.rollback()
+
+    except Exception as exc:
+        crm.app.logger.warning("Webhook Instagram: %s", exc)
+        crm.db.session.rollback()
+
+    return "ok", 200
+
+
 crm.app.view_functions["whatsapp_webhook"] = whatsapp_webhook
+crm.app.add_url_rule(
+    "/webhooks/instagram",
+    endpoint="instagram_webhook",
+    view_func=instagram_webhook,
+    methods=["GET", "POST"],
+)
 app = crm.app
