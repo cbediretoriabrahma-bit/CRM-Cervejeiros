@@ -116,9 +116,6 @@ if p is not None:
                         continue
 
                     lead = _find_lead(page_id, sender_id)
-                    if not lead and not p._instagram_interest_message(text):
-                        crm.app.logger.warning("Instagram não comercial ignorado: sender=%s pagina=%s", sender_id, page_id)
-                        continue
                     if lead and p._instagram_recent_duplicate(lead, text):
                         crm.app.logger.warning("Instagram repetido ignorado para lead=%s", lead.id)
                         continue
@@ -142,7 +139,7 @@ if p is not None:
                         crm.db.session.add(crm.AutomationLog(
                             lead_id=lead.id,
                             action="Lead criado pelo Instagram",
-                            detail=f"Direct recebido em {account['label']} ({page_id}).",
+                            detail=f"Nova mensagem recebida em {account['label']} ({page_id}).",
                         ))
 
                     crm.db.session.add(crm.Interaction(
