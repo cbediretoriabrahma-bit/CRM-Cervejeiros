@@ -411,7 +411,10 @@ if p is not None:
         if inbound_count == 4:
             return "Quantos condomínios ou clubes você acredita conseguir prospectar? 1) 1 a 4  2) 5 a 9  3) 10 ou mais"
         if inbound_count == 5:
-            return "Com quantas geladeiras você pretende começar? 1) 1 geladeira  2) 2 geladeiras  3) 3 ou mais"
+            return ("Com qual modelo você pretende iniciar?\n"
+                    "1) Standard — 1 geladeira de autoatendimento\n"
+                    "2) Pro — 2 geladeiras de autoatendimento\n"
+                    "3) Premium — 3 geladeiras de autoatendimento")
         if inbound_count == 6:
             return ("Qual faixa de investimento você tem disponível para iniciar? "
                     "1) R$ 18.900 a R$ 29.999  2) R$ 30.000 a R$ 44.999  3) R$ 45.000 a R$ 55.000")
@@ -424,6 +427,8 @@ if p is not None:
         if inbound_count == 9:
             return (
                 f"{first}, antes de avançarmos, quero te contar rapidamente por que o modelo Cervejeiros tem atraído novos licenciados. 🍻\n\n"
+                "Hoje já contamos com mais de 158 geladeiras instaladas em condomínios e clubes, operadas tanto pela própria Cervejeiros quanto por nossos licenciados.\n\n"
+                "Já temos operações e licenciados em São Paulo, interior de São Paulo, Rio de Janeiro, Minas Gerais, Amazonas e Goiás, mostrando que o modelo pode ser replicado em diferentes mercados.\n\n"
                 "A Cervejeiros trabalha com geladeiras de autoatendimento de chopp em condomínios e clubes, em um modelo pensado para ser simples, tecnológico e escalável.\n\n"
                 "✅ Sem necessidade de funcionário no ponto\n"
                 "✅ Operação 24 horas\n"
@@ -487,10 +492,13 @@ if p is not None:
             t = (text or "").strip().lower()
             if t.startswith("1"):
                 p._set_tag(lead, "Q_FRIDGES", 1)
+                p._set_tag(lead, "Q_MODEL", "Standard")
             elif t.startswith("2"):
                 p._set_tag(lead, "Q_FRIDGES", 2)
+                p._set_tag(lead, "Q_MODEL", "Pro")
             else:
                 p._set_tag(lead, "Q_FRIDGES", 3)
+                p._set_tag(lead, "Q_MODEL", "Premium")
         elif inbound_count == 7:
             t = (text or "").strip().lower()
             if t.startswith("1"):
