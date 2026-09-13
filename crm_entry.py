@@ -3,9 +3,12 @@ from zoneinfo import ZoneInfo
 
 from flask import flash, redirect, render_template, request, url_for
 
-import app as crm
+# Importa o módulo completo que já contém o webhook e a automação do WhatsApp.
+# O novo pipeline comercial é aplicado por cima, sem perder as integrações existentes.
+import patched_app as patched
 
-app = crm.app
+crm = patched.crm
+app = patched.app
 
 # Pipeline comercial oficial após a qualificação automática.
 COMMERCIAL_PIPELINE = [
