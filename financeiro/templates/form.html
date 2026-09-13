@@ -6,6 +6,7 @@
 <label>Fornecedor<input name="supplier" required value="{{ account.supplier if account else '' }}"></label>
 <label>Descrição<input name="description" required value="{{ account.description if account else '' }}"></label>
 <label>Categoria<input name="category" value="{{ account.category if account else '' }}" placeholder="Ex.: Chopp, aluguel, energia, imposto"></label>
+{% if not account %}<label>Classificação no DRE<select name="dre_class" required><option value="nao_classificado">Não classificado</option><option value="cmv">Custo direto / CMV</option><option value="fixa">Despesa operacional fixa</option><option value="variavel">Despesa operacional variável</option><option value="impostos">Impostos e taxas</option><option value="financeira">Despesa financeira</option></select><small>Essa classificação permite calcular margem bruta, margem líquida e ponto de equilíbrio com mais precisão.</small></label>{% endif %}
 <label>Documento / referência<input name="document" value="{{ account.document if account else '' }}" placeholder="NF, boleto, contrato..."></label>
 <label>Valor total<input name="total_amount" required inputmode="decimal" value="{{ ('%.2f'|format(account.total_amount)).replace('.',',') if account else '' }}" placeholder="0,00"></label>
 <label>Vencimento<input type="date" name="due_date" required value="{{ account.due_date.isoformat() if account else '' }}"></label>
