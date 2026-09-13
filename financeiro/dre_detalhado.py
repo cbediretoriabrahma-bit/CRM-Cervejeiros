@@ -54,7 +54,6 @@ def normalize_dre_class(value):
 
 
 def sync_recurring_dre_classes():
-    """Replica a classificação DRE da regra recorrente para cada ocorrência criada."""
     rules = {r.recurring_cost_id: r.dre_class for r in RecurringDreClass.query.all()}
     if not rules:
         return
@@ -109,7 +108,6 @@ def save_cost_with_dre():
         db.session.add(rule)
         db.session.flush()
         db.session.add(RecurringDreClass(recurring_cost_id=rule.id, dre_class=dre_class))
-
         payable = Payable(**common, due_date=due_date)
         db.session.add(payable)
         db.session.flush()
@@ -128,13 +126,9 @@ def save_cost_with_dre():
         if entry > 0:
             entry = min(entry, total_amount)
             paid_date = core.parse_date(core.request.form.get("entry_date")) or date.today()
-            db.session.add(PayablePayment(
-                payable_id=payable.id,
-                amount=entry,
-                paid_date=paid_date,
-                payment_method=core.request.form.get("entry_method", "PIX"),
-                note="Entrada / pagamento inicial",
-            ))
+            db.session.add(PayablePayment(payable_id=payable.id, amount=entry, paid_date=paid_date,
+                                          payment_method=core.request.form.get("entry_method", "PIX"),
+                                          note="Entrada / pagamento inicial"))
         db.session.commit()
         core.flash("Conta cadastrada com sucesso.", "success")
     return core.redirect(core.url_for("dashboard"))
@@ -162,13 +156,9 @@ def update_dre_class(account_id):
 def detail_with_dre(account_id):
     account = Payable.query.get_or_404(account_id)
     row = CostDreClass.query.filter_by(payable_id=account_id).first()
-    return core.render_template(
-        "detail.html",
-        account=account,
-        today=date.today(),
-        dre_class=(row.dre_class if row else "nao_classificado"),
-        dre_labels=DRE_CLASS_LABELS,
-    )
+    return core.render_template("detail.html", account=account, today=date.today(),
+                                dre_class=(row.dre_class if row else "nao_classificado"),
+                                dre_labels=DRE_CLASS_LABELS)
 
 
 app.view_functions["detail"] = login_required(detail_with_dre)
@@ -213,59 +203,31 @@ def compute_detailed_dre(month, store=""):
     gross_margin = (gross_profit / total_revenue * 100) if total_revenue else 0
     net_result = total_revenue - total_expense
     net_margin = (net_result / total_revenue * 100) if total_revenue else 0
-
     variable_for_contribution = class_totals["cmv"] + class_totals["variavel"] + class_totals["impostos"]
     contribution = total_revenue - variable_for_contribution
     contribution_margin = (contribution / total_revenue * 100) if total_revenue else 0
     fixed_for_breakeven = class_totals["fixa"] + class_totals["financeira"] + class_totals["nao_classificado"]
     contribution_ratio = contribution / total_revenue if total_revenue else 0
     breakeven = (fixed_for_breakeven / contribution_ratio) if contribution_ratio > 0 else 0
-
     classified_amount = total_expense - class_totals["nao_classificado"]
     classification_coverage = (classified_amount / total_expense * 100) if total_expense else 100
 
-    expense_rows = []
-    for category, amount in sorted(expense_by_category.items(), key=lambda item: item[1], reverse=True):
-        expense_rows.append({
-            "category": category,
-            "amount": amount,
-            "pct_revenue": (amount / total_revenue * 100) if total_revenue else 0,
-            "pct_expense": (amount / total_expense * 100) if total_expense else 0,
-        })
+    expense_rows = [{"category": category, "amount": amount,
+                     "pct_revenue": (amount / total_revenue * 100) if total_revenue else 0,
+                     "pct_expense": (amount / total_expense * 100) if total_expense else 0}
+                    for category, amount in sorted(expense_by_category.items(), key=lambda item: item[1], reverse=True)]
+    class_rows = [{"key": key, "label": label, "amount": class_totals[key],
+                   "pct_revenue": (class_totals[key] / total_revenue * 100) if total_revenue else 0,
+                   "pct_expense": (class_totals[key] / total_expense * 100) if total_expense else 0}
+                  for key, label in DRE_CLASS_LABELS.items()]
 
-    class_rows = []
-    for key, label in DRE_CLASS_LABELS.items():
-        amount = class_totals[key]
-        class_rows.append({
-            "key": key,
-            "label": label,
-            "amount": amount,
-            "pct_revenue": (amount / total_revenue * 100) if total_revenue else 0,
-            "pct_expense": (amount / total_expense * 100) if total_expense else 0,
-        })
-
-    return {
-        "store": store,
-        "month": month,
-        "revenue_by_category": revenue_by_category,
-        "expense_by_category": expense_by_category,
-        "expense_rows": expense_rows,
-        "class_rows": class_rows,
-        "class_totals": class_totals,
-        "total_revenue": total_revenue,
-        "total_expense": total_expense,
-        "cmv": cmv,
-        "gross_profit": gross_profit,
-        "gross_margin": gross_margin,
-        "net_result": net_result,
-        "net_margin": net_margin,
-        "contribution": contribution,
-        "contribution_margin": contribution_margin,
-        "fixed_for_breakeven": fixed_for_breakeven,
-        "breakeven": breakeven,
-        "classification_coverage": classification_coverage,
-        "unclassified": class_totals["nao_classificado"],
-    }
+    return {"revenue_by_category": revenue_by_category, "expense_by_category": expense_by_category,
+            "expense_rows": expense_rows, "class_rows": class_rows, "class_totals": class_totals,
+            "total_revenue": total_revenue, "total_expense": total_expense, "cmv": cmv,
+            "gross_profit": gross_profit, "gross_margin": gross_margin, "net_result": net_result,
+            "net_margin": net_margin, "contribution": contribution, "contribution_margin": contribution_margin,
+            "fixed_for_breakeven": fixed_for_breakeven, "breakeven": breakeven,
+            "classification_coverage": classification_coverage, "unclassified": class_totals["nao_classificado"]}
 
 
 def detailed_dre():
@@ -275,24 +237,12 @@ def detailed_dre():
     unit_rows = []
     for store in base.managed_stores(active_only=False):
         unit = compute_detailed_dre(month, store)
-        unit_rows.append({
-            "store": store,
-            "revenue": unit["total_revenue"],
-            "gross_profit": unit["gross_profit"],
-            "gross_margin": unit["gross_margin"],
-            "expense": unit["total_expense"],
-            "result": unit["net_result"],
-            "net_margin": unit["net_margin"],
-            "breakeven": unit["breakeven"],
-        })
-    return core.render_template(
-        "dre.html",
-        stores=base.managed_stores(active_only=False),
-        store_filter=store_filter,
-        month=month,
-        unit_rows=unit_rows,
-        **data,
-    )
+        unit_rows.append({"store": store, "revenue": unit["total_revenue"], "gross_profit": unit["gross_profit"],
+                          "gross_margin": unit["gross_margin"], "expense": unit["total_expense"],
+                          "result": unit["net_result"], "net_margin": unit["net_margin"],
+                          "breakeven": unit["breakeven"]})
+    return core.render_template("dre.html", stores=base.managed_stores(active_only=False),
+                                store_filter=store_filter, month=month, unit_rows=unit_rows, **data)
 
 
 app.view_functions["dre"] = login_required(detailed_dre)
@@ -303,106 +253,39 @@ def detailed_dre_export(fmt):
     store = core.request.args.get("store", "").strip()
     d = compute_detailed_dre(month, store)
     scope = store or "Consolidado"
-    summary = [
-        ["Receita total", d["total_revenue"], 100.0 if d["total_revenue"] else 0],
-        ["(-) Custo direto / CMV", d["cmv"], (d["cmv"] / d["total_revenue"] * 100) if d["total_revenue"] else 0],
-        ["Lucro bruto", d["gross_profit"], d["gross_margin"]],
-        ["Margem bruta", d["gross_margin"], None],
-        ["Margem de contribuição", d["contribution"], d["contribution_margin"]],
-        ["Despesas totais", d["total_expense"], (d["total_expense"] / d["total_revenue"] * 100) if d["total_revenue"] else 0],
-        ["Resultado líquido", d["net_result"], d["net_margin"]],
-        ["Margem líquida", d["net_margin"], None],
-        ["Ponto de equilíbrio estimado", d["breakeven"], None],
-    ]
-
+    summary = [["Receita total", d["total_revenue"], 100.0 if d["total_revenue"] else 0],
+               ["(-) Custo direto / CMV", d["cmv"], (d["cmv"] / d["total_revenue"] * 100) if d["total_revenue"] else 0],
+               ["Lucro bruto", d["gross_profit"], d["gross_margin"]],
+               ["Margem bruta", d["gross_margin"], None],
+               ["Margem de contribuição", d["contribution"], d["contribution_margin"]],
+               ["Despesas totais", d["total_expense"], (d["total_expense"] / d["total_revenue"] * 100) if d["total_revenue"] else 0],
+               ["Resultado líquido", d["net_result"], d["net_margin"]],
+               ["Margem líquida", d["net_margin"], None],
+               ["Ponto de equilíbrio estimado", d["breakeven"], None]]
     if fmt == "xlsx":
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "DRE Detalhado"
-        ws.append(["DRE Detalhado", scope, month])
-        ws.append(["Indicador", "Valor", "% da receita"])
-        for item, value, pct in summary:
-            ws.append([item, value, pct])
-        ws.append([])
-        ws.append(["Gastos por categoria", "Valor", "% da receita", "% dos gastos"])
-        for row in d["expense_rows"]:
-            ws.append([row["category"], row["amount"], row["pct_revenue"], row["pct_expense"]])
-        ws.append([])
-        ws.append(["Classificação DRE", "Valor", "% da receita", "% dos gastos"])
-        for row in d["class_rows"]:
-            ws.append([row["label"], row["amount"], row["pct_revenue"], row["pct_expense"]])
-        for col in ws.columns:
-            ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or "")) for c in col) + 2, 45)
-        out = io.BytesIO()
-        wb.save(out)
-        out.seek(0)
+        wb = Workbook(); ws = wb.active; ws.title = "DRE Detalhado"
+        ws.append(["DRE Detalhado", scope, month]); ws.append(["Indicador", "Valor", "% da receita"])
+        for item, value, pct in summary: ws.append([item, value, pct])
+        ws.append([]); ws.append(["Gastos por categoria", "Valor", "% da receita", "% dos gastos"])
+        for row in d["expense_rows"]: ws.append([row["category"], row["amount"], row["pct_revenue"], row["pct_expense"]])
+        out = io.BytesIO(); wb.save(out); out.seek(0)
         return send_file(out, as_attachment=True, download_name=f"dre_detalhado_{month}.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    out = io.BytesIO()
-    doc = SimpleDocTemplate(out, pagesize=landscape(A4), leftMargin=22, rightMargin=22, topMargin=22, bottomMargin=22)
-    styles = getSampleStyleSheet()
-    story = [Paragraph(f"DRE Detalhado - {scope} - {month}", styles["Title"]), Spacer(1, 8)]
-    rows = [["Indicador", "Valor", "% da receita"]]
-    for item, value, pct in summary:
-        if "Margem " in item and isinstance(value, (int, float)) and pct is None:
-            value_text = f"{value:.1f}%"
-        else:
-            value_text = core.brl(value) if isinstance(value, (int, float)) else str(value)
-        rows.append([item, value_text, "" if pct is None else f"{pct:.1f}%"])
-    table = Table(rows, repeatRows=1)
-    table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.lightgrey), ("GRID", (0,0), (-1,-1), .4, colors.grey), ("FONTSIZE", (0,0), (-1,-1), 8)]))
-    story += [table, Spacer(1, 12), Paragraph("Gastos por categoria", styles["Heading2"])]
-    expense_rows = [["Categoria", "Valor", "% receita", "% gastos"]] + [[r["category"], core.brl(r["amount"]), f"{r['pct_revenue']:.1f}%", f"{r['pct_expense']:.1f}%"] for r in d["expense_rows"]]
-    t2 = Table(expense_rows, repeatRows=1)
-    t2.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.lightgrey), ("GRID", (0,0), (-1,-1), .4, colors.grey), ("FONTSIZE", (0,0), (-1,-1), 8)]))
-    story.append(t2)
-    doc.build(story)
-    out.seek(0)
+    out = io.BytesIO(); doc = SimpleDocTemplate(out, pagesize=landscape(A4))
+    styles = getSampleStyleSheet(); story = [Paragraph(f"DRE Detalhado - {scope} - {month}", styles["Title"]), Spacer(1, 10)]
+    rows = [["Indicador", "Valor", "% receita"]] + [[i, f"R$ {v:,.2f}", "" if p is None else f"{p:.1f}%"] for i, v, p in summary]
+    table = Table(rows, repeatRows=1); table.setStyle(TableStyle([("GRID", (0,0), (-1,-1), .4, colors.grey), ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)]))
+    story.append(table); doc.build(story); out.seek(0)
     return send_file(out, as_attachment=True, download_name=f"dre_detalhado_{month}.pdf", mimetype="application/pdf")
 
 
-_original_export_report = app.view_functions["export_report"]
+_original_export = app.view_functions.get("export_report")
 
-
-def export_report_with_detailed_dre(kind, fmt):
+def export_report_override(kind, fmt):
     if kind == "dre" and fmt in {"xlsx", "pdf"}:
         return detailed_dre_export(fmt)
-    return _original_export_report(kind, fmt)
+    if _original_export:
+        return _original_export(kind, fmt)
+    return "Relatório inválido", 404
 
-
-app.view_functions["export_report"] = export_report_with_detailed_dre
-
-
-def backup_financeiro_extended():
-    finance_tables = [
-        "finance_user", "finance_store_unit", "payable", "payable_payment", "finance_revenue",
-        "finance_recurring_cost", "finance_recurring_occurrence", "finance_cost_dre_class", "finance_recurring_dre_class",
-    ]
-    inspector = base.inspect(db.engine)
-    available = set(inspector.get_table_names())
-    selected = [name for name in finance_tables if name in available]
-    memory = io.BytesIO()
-    manifest = {
-        "backup_type": "financeiro-cervejeiros",
-        "created_at_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "tables": {},
-        "format_version": 3,
-    }
-    with zipfile.ZipFile(memory, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for table_name in selected:
-            columns = inspector.get_columns(table_name)
-            result = db.session.execute(base.text(f'SELECT * FROM "{table_name}"'))
-            rows = [{key: base._backup_value(value) for key, value in row.items()} for row in result.mappings().all()]
-            manifest["tables"][table_name] = {
-                "row_count": len(rows),
-                "columns": [{"name": c["name"], "type": str(c["type"]), "nullable": bool(c.get("nullable", True))} for c in columns],
-            }
-            archive.writestr(f"{table_name}.json", json.dumps(rows, ensure_ascii=False, indent=2))
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-    memory.seek(0)
-    return send_file(memory, mimetype="application/zip", as_attachment=True,
-                     download_name=f"backup_financeiro_cervejeiros_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.zip", max_age=0)
-
-
-app.view_functions["backup_financeiro"] = login_required(backup_financeiro_extended)
+app.view_functions["export_report"] = export_report_override
