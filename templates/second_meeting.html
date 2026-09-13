@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}
+<div class="title-row"><div><h1>Agendar 2ª reunião</h1><p>{{lead.name}} · Responsável: <b>{{lead.owner.name if lead.owner else '-'}}</b></p></div><a class="btn" href="{{url_for('lead_detail',lead_id=lead.id)}}">Voltar</a></div>
+<section class="panel"><h2>Horários disponíveis</h2><p>Escolha um dos 3 próximos horários livres na agenda do responsável pelo lead. Cada reunião dura 1 hora.</p>
+{% if options %}<form method="post"><div style="display:grid;gap:12px;margin:18px 0">{% for value,label in options %}<label class="history" style="cursor:pointer"><input type="radio" name="slot" value="{{value}}" required> <b>{{label}}</b></label>{% endfor %}</div><button class="btn primary">Confirmar 2ª reunião</button></form>{% else %}<p class="muted">Não encontramos horários disponíveis nos próximos dias.</p>{% endif %}</section>
+{% endblock %}
