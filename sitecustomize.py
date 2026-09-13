@@ -4,9 +4,11 @@
 substitui somente o handler do Instagram, preservando o WhatsApp e o restante do CRM.
 """
 import os
+import re
 import json
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta, time
+from zoneinfo import ZoneInfo
 from flask import request
 
 try:
@@ -38,7 +40,6 @@ if p is not None:
                 "token": os.getenv("INSTAGRAM_ACCESS_TOKEN_CERVEJEIROS") or os.getenv("INSTAGRAM_ACCESS_TOKEN"),
             }
 
-        # Fallback para instalações antigas com uma única conta.
         return {
             "label": "Instagram",
             "page_id": page_id,
@@ -53,7 +54,6 @@ if p is not None:
         lead = crm.Lead.query.filter_by(phone=key, source="Instagram").order_by(crm.Lead.id.desc()).first()
         if lead:
             return lead
-        # Compatibilidade com lead criado antes do suporte a duas contas.
         old_key = f"IG-{sender_id}"
         return crm.Lead.query.filter_by(phone=old_key, source="Instagram").order_by(crm.Lead.id.desc()).first()
 
@@ -195,6 +195,347 @@ if p is not None:
 
         return "ok", 200
 
-    # patched_app já registra a URL; trocamos apenas a função ligada ao endpoint.
     if "instagram_webhook" in crm.app.view_functions:
         crm.app.view_functions["instagram_webhook"] = instagram_webhook_multi
+
+    # ------------------------------------------------------------------
+    # Qualificação final + pipeline automático + agenda de reuniões
+    # ------------------------------------------------------------------
+    TZ = ZoneInfo("America/Sao_Paulo")
+
+    if "Prioridade / Reunião" not in crm.PIPELINE:
+        try:
+            idx = crm.PIPELINE.index("Reunião Agendada")
+        except ValueError:
+            idx = len(crm.PIPELINE)
+        crm.PIPELINE.insert(idx, "Prioridade / Reunião")
+
+    crm.TIMEFRAMES = ["Imediatamente", "Em até 30 dias", "Em até 60 dias", "Acima de 60 dias"]
+
+    def _tag_value(lead, key):
+        notes = lead.notes or ""
+        match = re.search(rf"^\[{re.escape(key)}\]=(.*)$", notes, flags=re.MULTILINE)
+        return match.group(1).strip() if match else ""
+
+    def _set_tag(lead, key, value):
+        value = str(value).strip()
+        notes = lead.notes or ""
+        pattern = rf"^\[{re.escape(key)}\]=.*$"
+        line = f"[{key}]={value}"
+        if re.search(pattern, notes, flags=re.MULTILINE):
+            notes = re.sub(pattern, line, notes, flags=re.MULTILINE)
+        else:
+            notes = (notes.strip() + ("\n" if notes.strip() else "") + line).strip()
+        lead.notes = notes
+
+    def _parse_timeframe_final(text):
+        t = (text or "").strip().lower()
+        if t.startswith("1") or any(x in t for x in ["imediatamente", "imediato", "agora", "hoje", "já", "ja"]):
+            return "Imediatamente"
+        if t.startswith("2") or "30" in t or "1 mês" in t or "1 mes" in t:
+            return "Em até 30 dias"
+        if t.startswith("3") or "60" in t or "2 meses" in t or "2 mes" in t:
+            return "Em até 60 dias"
+        return "Acima de 60 dias"
+
+    def _score_final(lead):
+        score = 0
+        if lead.city and lead.state:
+            score += 5
+
+        access = _tag_value(lead, "Q_ACCESS")
+        score += {"locais_em_vista": 20, "alguns_contatos": 12, "vai_prospectar": 5}.get(access, 0)
+
+        try:
+            prospects = int(_tag_value(lead, "Q_PROSPECTS") or 0)
+        except Exception:
+            prospects = 0
+        if prospects >= 10:
+            score += 15
+        elif prospects >= 5:
+            score += 10
+        elif prospects >= 1:
+            score += 5
+
+        try:
+            fridges = int(_tag_value(lead, "Q_FRIDGES") or 0)
+        except Exception:
+            fridges = 0
+        if fridges >= 3:
+            score += 15
+        elif fridges == 2:
+            score += 10
+        elif fridges == 1:
+            score += 5
+
+        investment = lead.investment or 0
+        if investment >= 45000:
+            score += 20
+        elif investment >= 30000:
+            score += 15
+        elif investment >= 18900:
+            score += 10
+
+        if lead.timeframe == "Imediatamente":
+            score += 15
+        elif lead.timeframe == "Em até 30 dias":
+            score += 10
+        elif lead.timeframe == "Em até 60 dias":
+            score += 5
+
+        objective = _tag_value(lead, "Q_OBJECTIVE")
+        score += {"expandir": 5, "avaliar": 3, "renda_complementar": 1}.get(objective, 0)
+
+        if lead.meeting_interest == "Sim":
+            score += 5
+        return min(score, 100)
+
+    def _temperature_final(score):
+        if score >= 60:
+            return "Quente"
+        if score >= 20:
+            return "Morno"
+        return "Frio"
+
+    def _auto_stage_final(lead, preserve=True):
+        if preserve and lead.stage in {"Prioridade / Reunião", "Reunião Agendada", "Proposta Enviada", "Negociação", "Fechado", "Perdido"}:
+            return lead.stage
+        if lead.meeting_interest == "Sim":
+            return "Prioridade / Reunião"
+        if lead.score >= 80:
+            return "Prioridade / Reunião"
+        if lead.score >= 60:
+            return "Qualificado"
+        if lead.score >= 20:
+            return "Em Qualificação"
+        return "Novo Lead"
+
+    crm.score_lead = _score_final
+    crm.temperature = _temperature_final
+    crm.auto_stage = _auto_stage_final
+    p._score_lead = _score_final
+    p._temperature = _temperature_final
+    p._auto_stage = _auto_stage_final
+
+    def _meeting_hours():
+        raw = os.getenv("MEETING_HOURS", "09:00,14:00,16:00")
+        hours = []
+        for item in raw.split(","):
+            try:
+                hh, mm = item.strip().split(":", 1)
+                hours.append(time(int(hh), int(mm)))
+            except Exception:
+                pass
+        return hours or [time(9, 0), time(14, 0), time(16, 0)]
+
+    def _slot_is_free(local_dt):
+        utc_naive = local_dt.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        start = utc_naive - timedelta(minutes=1)
+        end = utc_naive + timedelta(minutes=1)
+        return crm.Task.query.filter(
+            crm.Task.task_type == "Reunião",
+            crm.Task.status == "Pendente",
+            crm.Task.due_at >= start,
+            crm.Task.due_at <= end,
+        ).first() is None
+
+    def _meeting_options(lead, refresh=False):
+        stored = []
+        if not refresh:
+            for i in range(1, 4):
+                raw = _tag_value(lead, f"Q_SLOT_{i}")
+                if raw:
+                    try:
+                        stored.append(datetime.fromisoformat(raw))
+                    except Exception:
+                        stored = []
+                        break
+            if len(stored) == 3:
+                return stored
+
+        now = datetime.now(TZ)
+        options = []
+        for add_day in range(0, 15):
+            day = (now + timedelta(days=add_day)).date()
+            if day.weekday() >= 5:
+                continue
+            for hr in _meeting_hours():
+                slot = datetime.combine(day, hr, tzinfo=TZ)
+                if slot <= now + timedelta(hours=2):
+                    continue
+                if _slot_is_free(slot):
+                    options.append(slot)
+                if len(options) == 3:
+                    break
+            if len(options) == 3:
+                break
+
+        for i, slot in enumerate(options, 1):
+            _set_tag(lead, f"Q_SLOT_{i}", slot.isoformat())
+        return options
+
+    def _format_slot(slot):
+        weekdays = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+        return f"{weekdays[slot.weekday()]}, {slot.strftime('%d/%m')} às {slot.strftime('%H:%M')}"
+
+    def _schedule_choice(lead, text):
+        match = re.search(r"\b([123])\b", (text or "").strip())
+        if not match:
+            return False
+        choice = int(match.group(1))
+        options = _meeting_options(lead)
+        if len(options) < choice:
+            return False
+        slot = options[choice - 1]
+        if not _slot_is_free(slot):
+            _meeting_options(lead, refresh=True)
+            return False
+
+        utc_naive = slot.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        crm.db.session.add(crm.Task(
+            lead_id=lead.id,
+            owner_id=lead.owner_id,
+            title=f"Reunião com {lead.name}",
+            task_type="Reunião",
+            due_at=utc_naive,
+            status="Pendente",
+            notes=f"Reunião comercial agendada automaticamente para {_format_slot(slot)}.",
+        ))
+        lead.next_followup = utc_naive
+        lead.stage = "Reunião Agendada"
+        _set_tag(lead, "Q_MEETING_SLOT", slot.isoformat())
+        _set_tag(lead, "Q_MEETING_CHOICE", choice)
+        current = (lead.notes or "").strip()
+        line = f"Reunião agendada: {_format_slot(slot)}"
+        lead.notes = current + ("\n" if current else "") + line
+        return True
+
+    def _qualification_reply_final(lead, channel):
+        inbound_count = crm.Interaction.query.filter_by(
+            lead_id=lead.id, channel=channel, direction="in"
+        ).count()
+        first = (lead.name or "Olá").split()[0]
+
+        if inbound_count <= 1:
+            return f"Olá, {first}! 🍻 Obrigado pelo interesse na Cervejeiros. Em qual cidade você pretende operar?"
+        if inbound_count == 2:
+            return f"Perfeito, {first}! Em qual estado fica essa cidade?"
+        if inbound_count == 3:
+            return ("Você já possui contato ou acesso a condomínios, clubes ou locais de grande circulação? "
+                    "1) Já tenho locais em vista  2) Tenho alguns contatos  3) Ainda vou começar a prospectar")
+        if inbound_count == 4:
+            return "Quantos condomínios ou clubes você acredita conseguir prospectar? 1) 1 a 4  2) 5 a 9  3) 10 ou mais"
+        if inbound_count == 5:
+            return "Com quantas geladeiras você pretende começar? 1) 1 geladeira  2) 2 geladeiras  3) 3 ou mais"
+        if inbound_count == 6:
+            return ("Qual faixa de investimento você tem disponível para iniciar? "
+                    "1) R$ 18.900 a R$ 29.999  2) R$ 30.000 a R$ 44.999  3) R$ 45.000 a R$ 55.000")
+        if inbound_count == 7:
+            return ("Em quanto tempo você pretende iniciar a prospecção de condomínios e clubes? "
+                    "1) Imediatamente  2) Em até 30 dias  3) Em até 60 dias  4) Acima de 60 dias / estou apenas pesquisando")
+        if inbound_count == 8:
+            return ("Qual é o seu objetivo com o negócio? "
+                    "1) Expandir para várias geladeiras  2) Começar e depois avaliar  3) Renda complementar")
+        if inbound_count == 9:
+            return "Se o modelo fizer sentido para você, gostaria de falar com um consultor para conhecer os planos e valores?"
+        if inbound_count == 10:
+            if lead.meeting_interest == "Sim":
+                options = _meeting_options(lead, refresh=True)
+                if len(options) >= 3:
+                    crm.db.session.commit()
+                    return (f"Perfeito, {first}! Tenho estes 3 horários disponíveis:\n"
+                            f"1) {_format_slot(options[0])}\n"
+                            f"2) {_format_slot(options[1])}\n"
+                            f"3) {_format_slot(options[2])}\n"
+                            "Responda somente 1, 2 ou 3 para reservar.")
+                return "Perfeito! Nosso consultor vai entrar em contato para combinar o melhor horário."
+            if lead.meeting_interest == "Talvez":
+                return "Sem problema. Vamos manter seu perfil em acompanhamento e você pode avançar quando desejar. 🍻"
+            return "Tudo certo. Seu contato continuará cadastrado e estaremos à disposição quando quiser avançar. 🍻"
+        if inbound_count == 11 and lead.meeting_interest == "Sim":
+            selected = _tag_value(lead, "Q_MEETING_SLOT")
+            if selected:
+                try:
+                    slot = datetime.fromisoformat(selected)
+                    return f"✅ Reunião confirmada para {_format_slot(slot)}. Nosso consultor falará com você no horário agendado. 🍻"
+                except Exception:
+                    pass
+            options = _meeting_options(lead, refresh=True)
+            crm.db.session.commit()
+            if len(options) >= 3:
+                return ("Esse horário não está mais disponível. Escolha uma destas novas opções:\n"
+                        f"1) {_format_slot(options[0])}\n"
+                        f"2) {_format_slot(options[1])}\n"
+                        f"3) {_format_slot(options[2])}")
+        return None
+
+    def _apply_answer_final(lead, text, inbound_count, channel):
+        if inbound_count == 2:
+            lead.city = text.strip()[:120]
+        elif inbound_count == 3:
+            lead.state = text.strip().upper()[:40]
+        elif inbound_count == 4:
+            p._set_tag(lead, "Q_ACCESS", p._parse_access(text))
+        elif inbound_count == 5:
+            t = (text or "").strip().lower()
+            if t.startswith("1"):
+                p._set_tag(lead, "Q_PROSPECTS", 4)
+            elif t.startswith("2"):
+                p._set_tag(lead, "Q_PROSPECTS", 9)
+            elif t.startswith("3"):
+                p._set_tag(lead, "Q_PROSPECTS", 10)
+            else:
+                p._set_tag(lead, "Q_PROSPECTS", p._parse_prospects(text))
+        elif inbound_count == 6:
+            t = (text or "").strip().lower()
+            if t.startswith("1"):
+                p._set_tag(lead, "Q_FRIDGES", 1)
+            elif t.startswith("2"):
+                p._set_tag(lead, "Q_FRIDGES", 2)
+            else:
+                p._set_tag(lead, "Q_FRIDGES", 3)
+        elif inbound_count == 7:
+            t = (text or "").strip().lower()
+            if t.startswith("1"):
+                lead.investment = 18900
+            elif t.startswith("2"):
+                lead.investment = 30000
+            elif t.startswith("3"):
+                lead.investment = 45000
+            else:
+                value = p._parse_investment(text)
+                if value > 0:
+                    lead.investment = value
+        elif inbound_count == 8:
+            lead.timeframe = _parse_timeframe_final(text)
+        elif inbound_count == 9:
+            p._set_tag(lead, "Q_OBJECTIVE", p._parse_objective(text))
+        elif inbound_count == 10:
+            lead.meeting_interest = p._yes_no(text)
+        elif inbound_count == 11 and lead.meeting_interest == "Sim":
+            _schedule_choice(lead, text)
+
+        crm.requalify(lead, preserve=False)
+        if lead.meeting_interest == "Sim" and lead.stage != "Reunião Agendada":
+            lead.stage = "Prioridade / Reunião"
+        if _tag_value(lead, "Q_MEETING_SLOT"):
+            lead.stage = "Reunião Agendada"
+
+        crm.db.session.add(crm.AutomationLog(
+            lead_id=lead.id,
+            action=f"Pipeline atualizado pelo {channel}",
+            detail=f"Resposta {inbound_count}; score {lead.score}; etapa {lead.stage}",
+        ))
+
+    p._qualification_reply = _qualification_reply_final
+    p._reply_for_message = lambda lead, text: _qualification_reply_final(lead, "WhatsApp")
+    p._reply_for_instagram = lambda lead: _qualification_reply_final(lead, "Instagram")
+    p._apply_answer_by_count = _apply_answer_final
+
+    def _apply_answer_to_lead_final(lead, text):
+        inbound_count = crm.Interaction.query.filter_by(
+            lead_id=lead.id, channel="WhatsApp", direction="in"
+        ).count()
+        _apply_answer_final(lead, text, inbound_count, "WhatsApp")
+
+    p._apply_answer_to_lead = _apply_answer_to_lead_final
