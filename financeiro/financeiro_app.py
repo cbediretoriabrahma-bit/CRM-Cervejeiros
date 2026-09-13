@@ -1,4 +1,9 @@
-from sqlalchemy import func
+import io
+import json
+import zipfile
+from datetime import date, datetime
+from flask import send_file
+from sqlalchemy import func, inspect, text
 import contas_pagar_app as core
 
 app = core.app
@@ -182,3 +187,75 @@ def financial_health():
 
     return core.render_template("financial_health.html", month=month, stores=stores,
                                 store_filter=store_filter, rows=rows, consolidated=consolidated)
+
+
+def _backup_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
+
+
+@app.route("/backup-financeiro")
+@login_required
+def backup_financeiro():
+    """Exporta uma cópia somente-leitura de todos os dados do módulo financeiro."""
+    finance_tables = [
+        "finance_user",
+        "finance_store_unit",
+        "payable",
+        "payable_payment",
+        "finance_revenue",
+    ]
+    inspector = inspect(db.engine)
+    available = set(inspector.get_table_names())
+    selected = [name for name in finance_tables if name in available]
+    created_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    memory = io.BytesIO()
+
+    manifest = {
+        "backup_type": "financeiro-cervejeiros",
+        "created_at_utc": created_at,
+        "tables": {},
+        "format_version": 1,
+    }
+
+    with zipfile.ZipFile(memory, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for table_name in selected:
+            columns = inspector.get_columns(table_name)
+            result = db.session.execute(text(f'SELECT * FROM "{table_name}"'))
+            rows = [
+                {key: _backup_value(value) for key, value in row.items()}
+                for row in result.mappings().all()
+            ]
+            manifest["tables"][table_name] = {
+                "row_count": len(rows),
+                "columns": [
+                    {
+                        "name": col["name"],
+                        "type": str(col["type"]),
+                        "nullable": bool(col.get("nullable", True)),
+                    }
+                    for col in columns
+                ],
+            }
+            archive.writestr(
+                f"{table_name}.json",
+                json.dumps(rows, ensure_ascii=False, indent=2),
+            )
+
+        archive.writestr(
+            "manifest.json",
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+        )
+
+    memory.seek(0)
+    filename = f"backup_financeiro_cervejeiros_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.zip"
+    return send_file(
+        memory,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=filename,
+        max_age=0,
+    )
