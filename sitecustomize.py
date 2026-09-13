@@ -422,7 +422,19 @@ if p is not None:
             return ("Qual é o seu objetivo com o negócio? "
                     "1) Expandir para várias geladeiras  2) Começar e depois avaliar  3) Renda complementar")
         if inbound_count == 9:
-            return "Se o modelo fizer sentido para você, gostaria de falar com um consultor para conhecer os planos e valores?"
+            return (
+                f"{first}, antes de avançarmos, quero te contar rapidamente por que o modelo Cervejeiros tem atraído novos licenciados. 🍻\n\n"
+                "A Cervejeiros trabalha com geladeiras de autoatendimento de chopp em condomínios e clubes, em um modelo pensado para ser simples, tecnológico e escalável.\n\n"
+                "✅ Sem necessidade de funcionário no ponto\n"
+                "✅ Operação 24 horas\n"
+                "✅ Gestão de vendas e acompanhamento pelo sistema\n"
+                "✅ Suporte para implantação e operação\n"
+                "✅ Possibilidade de expansão para novas geladeiras e novos pontos\n"
+                "✅ Estrutura enxuta e baixo custo operacional\n\n"
+                "Em operações com bom desempenho, o payback pode ocorrer a partir de aproximadamente 4 meses, variando conforme localização, volume de vendas e execução da operação.\n\n"
+                "É uma alternativa para quem busca um negócio prático, escalável e com potencial de boa rentabilidade, sem a complexidade de uma operação tradicional com equipe no local.\n\n"
+                "Gostaria de falar com um de nossos consultores para conhecer os planos, valores e entender qual formato faz mais sentido para você?"
+            )
         if inbound_count == 10:
             if lead.meeting_interest == "Sim":
                 options = _meeting_options(lead, refresh=True)
