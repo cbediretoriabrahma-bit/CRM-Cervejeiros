@@ -198,9 +198,6 @@ if p is not None:
     if "instagram_webhook" in crm.app.view_functions:
         crm.app.view_functions["instagram_webhook"] = instagram_webhook_multi
 
-    # ------------------------------------------------------------------
-    # Qualificação final + pipeline automático + agenda de reuniões
-    # ------------------------------------------------------------------
     TZ = ZoneInfo("America/Sao_Paulo")
 
     if "Prioridade / Reunião" not in crm.PIPELINE:
@@ -242,10 +239,8 @@ if p is not None:
         score = 0
         if lead.city and lead.state:
             score += 5
-
         access = _tag_value(lead, "Q_ACCESS")
         score += {"locais_em_vista": 20, "alguns_contatos": 12, "vai_prospectar": 5}.get(access, 0)
-
         try:
             prospects = int(_tag_value(lead, "Q_PROSPECTS") or 0)
         except Exception:
@@ -256,7 +251,6 @@ if p is not None:
             score += 10
         elif prospects >= 1:
             score += 5
-
         try:
             fridges = int(_tag_value(lead, "Q_FRIDGES") or 0)
         except Exception:
@@ -267,7 +261,6 @@ if p is not None:
             score += 10
         elif fridges == 1:
             score += 5
-
         investment = lead.investment or 0
         if investment >= 45000:
             score += 20
@@ -275,17 +268,14 @@ if p is not None:
             score += 15
         elif investment >= 18900:
             score += 10
-
         if lead.timeframe == "Imediatamente":
             score += 15
         elif lead.timeframe == "Em até 30 dias":
             score += 10
         elif lead.timeframe == "Em até 60 dias":
             score += 5
-
         objective = _tag_value(lead, "Q_OBJECTIVE")
         score += {"expandir": 5, "avaliar": 3, "renda_complementar": 1}.get(objective, 0)
-
         if lead.meeting_interest == "Sim":
             score += 5
         return min(score, 100)
@@ -318,26 +308,23 @@ if p is not None:
     p._auto_stage = _auto_stage_final
 
     def _meeting_hours():
-        raw = os.getenv("MEETING_HOURS", "09:00,14:00,16:00")
-        hours = []
-        for item in raw.split(","):
-            try:
-                hh, mm = item.strip().split(":", 1)
-                hours.append(time(int(hh), int(mm)))
-            except Exception:
-                pass
-        return hours or [time(9, 0), time(14, 0), time(16, 0)]
+        return [time(hour, 0) for hour in range(9, 20)]
 
-    def _slot_is_free(local_dt):
+    def _slot_is_free(local_dt, owner_id):
         utc_naive = local_dt.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-        start = utc_naive - timedelta(minutes=1)
-        end = utc_naive + timedelta(minutes=1)
-        return crm.Task.query.filter(
+        start = utc_naive
+        end = utc_naive + timedelta(hours=1)
+        query = crm.Task.query.filter(
             crm.Task.task_type == "Reunião",
             crm.Task.status == "Pendente",
             crm.Task.due_at >= start,
-            crm.Task.due_at <= end,
-        ).first() is None
+            crm.Task.due_at < end,
+        )
+        if owner_id is None:
+            query = query.filter(crm.Task.owner_id.is_(None))
+        else:
+            query = query.filter(crm.Task.owner_id == owner_id)
+        return query.first() is None
 
     def _meeting_options(lead, refresh=False):
         stored = []
@@ -363,7 +350,7 @@ if p is not None:
                 slot = datetime.combine(day, hr, tzinfo=TZ)
                 if slot <= now + timedelta(hours=2):
                     continue
-                if _slot_is_free(slot):
+                if _slot_is_free(slot, lead.owner_id):
                     options.append(slot)
                 if len(options) == 3:
                     break
@@ -387,10 +374,9 @@ if p is not None:
         if len(options) < choice:
             return False
         slot = options[choice - 1]
-        if not _slot_is_free(slot):
+        if not _slot_is_free(slot, lead.owner_id):
             _meeting_options(lead, refresh=True)
             return False
-
         utc_naive = slot.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
         crm.db.session.add(crm.Task(
             lead_id=lead.id,
@@ -399,14 +385,14 @@ if p is not None:
             task_type="Reunião",
             due_at=utc_naive,
             status="Pendente",
-            notes=f"Reunião comercial agendada automaticamente para {_format_slot(slot)}.",
+            notes=f"Reunião comercial de 1 hora agendada automaticamente para {_format_slot(slot)}.",
         ))
         lead.next_followup = utc_naive
         lead.stage = "Reunião Agendada"
         _set_tag(lead, "Q_MEETING_SLOT", slot.isoformat())
         _set_tag(lead, "Q_MEETING_CHOICE", choice)
         current = (lead.notes or "").strip()
-        line = f"Reunião agendada: {_format_slot(slot)}"
+        line = f"Reunião agendada: {_format_slot(slot)} | duração: 1 hora"
         lead.notes = current + ("\n" if current else "") + line
         return True
 
@@ -415,7 +401,6 @@ if p is not None:
             lead_id=lead.id, channel=channel, direction="in"
         ).count()
         first = (lead.name or "Olá").split()[0]
-
         if inbound_count <= 1:
             return f"Olá, {first}! 🍻 Obrigado pelo interesse na Cervejeiros. Em qual cidade você pretende operar?"
         if inbound_count == 2:
@@ -443,11 +428,11 @@ if p is not None:
                 options = _meeting_options(lead, refresh=True)
                 if len(options) >= 3:
                     crm.db.session.commit()
-                    return (f"Perfeito, {first}! Tenho estes 3 horários disponíveis:\n"
+                    return (f"Perfeito, {first}! Tenho estes 3 horários disponíveis com seu consultor:\n"
                             f"1) {_format_slot(options[0])}\n"
                             f"2) {_format_slot(options[1])}\n"
                             f"3) {_format_slot(options[2])}\n"
-                            "Responda somente 1, 2 ou 3 para reservar.")
+                            "Cada reunião dura 1 hora. Responda somente 1, 2 ou 3 para reservar.")
                 return "Perfeito! Nosso consultor vai entrar em contato para combinar o melhor horário."
             if lead.meeting_interest == "Talvez":
                 return "Sem problema. Vamos manter seu perfil em acompanhamento e você pode avançar quando desejar. 🍻"
@@ -457,7 +442,7 @@ if p is not None:
             if selected:
                 try:
                     slot = datetime.fromisoformat(selected)
-                    return f"✅ Reunião confirmada para {_format_slot(slot)}. Nosso consultor falará com você no horário agendado. 🍻"
+                    return f"✅ Reunião confirmada para {_format_slot(slot)}. Duração: 1 hora. Nosso consultor falará com você no horário agendado. 🍻"
                 except Exception:
                     pass
             options = _meeting_options(lead, refresh=True)
