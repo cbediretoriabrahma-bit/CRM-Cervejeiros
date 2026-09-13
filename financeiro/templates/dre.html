@@ -1,17 +1,52 @@
-{% extends 'base.html' %}{% block title %}DRE{% endblock %}{% block content %}
-<div class="page-head"><div><h1>DRE Gerencial</h1><p>Demonstrativo mensal de receitas, despesas e resultado.</p></div><div class="actions"><a class="btn" href="{{ url_for('export_report', kind='dre', fmt='pdf', store=store_filter, month=month) }}">Baixar PDF</a><a class="btn" href="{{ url_for('export_report', kind='dre', fmt='xlsx', store=store_filter, month=month) }}">Baixar Excel</a><button class="btn" type="button" onclick="window.print()">Imprimir</button></div></div>
+{% extends 'base.html' %}{% block title %}DRE Detalhado{% endblock %}{% block content %}
+<div class="page-head"><div><h1>DRE Detalhado</h1><p>Receitas, composição dos gastos, margem bruta, margem líquida, margem de contribuição e ponto de equilíbrio.</p></div><div class="actions"><a class="btn" href="{{ url_for('export_report', kind='dre', fmt='pdf', store=store_filter, month=month) }}">Baixar PDF</a><a class="btn" href="{{ url_for('export_report', kind='dre', fmt='xlsx', store=store_filter, month=month) }}">Baixar Excel</a><button class="btn" type="button" onclick="window.print()">Imprimir</button></div></div>
 <form class="filters" method="get"><select name="store"><option value="">Consolidado - todas as unidades</option>{% for s in stores %}<option value="{{ s }}" {% if store_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><label>Mês<input type="month" name="month" value="{{ month }}"></label><button class="btn primary" type="submit">Gerar DRE</button></form>
-<div class="cards"><div class="metric blue-border"><span>Receita total</span><strong>{{ total_revenue|brl }}</strong></div><div class="metric red-border"><span>Despesas pagas</span><strong>{{ total_expense|brl }}</strong></div><div class="metric {% if result >= 0 %}green-border{% else %}red-border{% endif %}"><span>Resultado</span><strong>{{ result|brl }}</strong></div><div class="metric"><span>Margem</span><strong>{{ '%.1f'|format(margin) }}%</strong></div></div>
-<div class="grid-two charts-grid"><div class="panel"><h2>Composição das receitas</h2><canvas id="revChart"></canvas></div><div class="panel"><h2>Composição das despesas</h2><canvas id="expChart"></canvas></div></div>
-<div class="grid-two">
-<div class="panel"><h2>Receitas</h2><table><tbody>{% for cat,val in revenue_by_category.items() %}<tr><td>{{ cat }}</td><td><strong>{{ val|brl }}</strong></td></tr>{% else %}<tr><td class="empty">Sem receitas no período.</td></tr>{% endfor %}<tr class="total-row"><td>Total receitas</td><td><strong>{{ total_revenue|brl }}</strong></td></tr></tbody></table></div>
-<div class="panel"><h2>Despesas</h2><table><tbody>{% for cat,val in expense_by_category.items() %}<tr><td>{{ cat }}</td><td><strong>{{ val|brl }}</strong></td></tr>{% else %}<tr><td class="empty">Sem despesas no período.</td></tr>{% endfor %}<tr class="total-row"><td>Total despesas</td><td><strong>{{ total_expense|brl }}</strong></td></tr></tbody></table></div>
+
+{% if unclassified > 0 %}<div class="alert-banner">Há {{ unclassified|brl }} de gastos ainda sem classificação DRE. O ponto de equilíbrio usa esses valores de forma conservadora como custos fixos. Cobertura da classificação: <strong>{{ '%.1f'|format(classification_coverage) }}%</strong>.</div>{% endif %}
+
+<div class="cards">
+<div class="metric blue-border"><span>Receita total</span><strong>{{ total_revenue|brl }}</strong></div>
+<div class="metric"><span>Lucro bruto</span><strong>{{ gross_profit|brl }}</strong><small>Receita menos custo direto/CMV.</small></div>
+<div class="metric green-border"><span>Margem bruta</span><strong>{{ '%.1f'|format(gross_margin) }}%</strong></div>
+<div class="metric"><span>Margem de contribuição</span><strong>{{ '%.1f'|format(contribution_margin) }}%</strong><small>{{ contribution|brl }}</small></div>
+<div class="metric red-border"><span>Despesas pagas</span><strong>{{ total_expense|brl }}</strong></div>
+<div class="metric {% if net_result >= 0 %}green-border{% else %}red-border{% endif %}"><span>Resultado líquido</span><strong>{{ net_result|brl }}</strong></div>
+<div class="metric {% if net_margin >= 0 %}green-border{% else %}red-border{% endif %}"><span>Margem líquida</span><strong>{{ '%.1f'|format(net_margin) }}%</strong></div>
+<div class="metric orange-border"><span>Ponto de equilíbrio estimado</span><strong>{{ breakeven|brl }}</strong><small>Receita mínima estimada para cobrir custos fixos considerando a margem de contribuição.</small></div>
 </div>
-<div class="panel"><h2>DRE por unidade</h2><div class="table-wrap"><table><thead><tr><th>Unidade</th><th>Receita</th><th>Despesa</th><th>Resultado</th></tr></thead><tbody>{% for u in unit_rows %}<tr><td><strong>{{ u.store }}</strong></td><td>{{ u.revenue|brl }}</td><td>{{ u.expense|brl }}</td><td><strong class="{% if u.result >= 0 %}positive{% else %}negative{% endif %}">{{ u.result|brl }}</strong></td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="grid-two">
+<div class="panel"><h2>Estrutura do DRE</h2><div class="table-wrap"><table><tbody>
+<tr><td><strong>Receita total</strong></td><td><strong>{{ total_revenue|brl }}</strong></td><td>100,0%</td></tr>
+<tr><td>(-) Custo direto / CMV</td><td>{{ cmv|brl }}</td><td>{{ '%.1f'|format((cmv/total_revenue*100) if total_revenue else 0) }}%</td></tr>
+<tr class="total-row"><td><strong>Lucro bruto</strong></td><td><strong>{{ gross_profit|brl }}</strong></td><td><strong>{{ '%.1f'|format(gross_margin) }}%</strong></td></tr>
+{% for r in class_rows %}{% if r.key != 'cmv' %}<tr><td>(-) {{ r.label }}</td><td>{{ r.amount|brl }}</td><td>{{ '%.1f'|format(r.pct_revenue) }}%</td></tr>{% endif %}{% endfor %}
+<tr class="total-row"><td><strong>Resultado líquido</strong></td><td><strong>{{ net_result|brl }}</strong></td><td><strong>{{ '%.1f'|format(net_margin) }}%</strong></td></tr>
+</tbody></table></div></div>
+<div class="panel"><h2>Indicadores gerenciais</h2><div class="table-wrap"><table><tbody>
+<tr><td>Margem bruta</td><td><strong>{{ '%.1f'|format(gross_margin) }}%</strong></td></tr>
+<tr><td>Margem líquida</td><td><strong>{{ '%.1f'|format(net_margin) }}%</strong></td></tr>
+<tr><td>Margem de contribuição</td><td><strong>{{ '%.1f'|format(contribution_margin) }}%</strong></td></tr>
+<tr><td>Custos fixos considerados</td><td><strong>{{ fixed_for_breakeven|brl }}</strong></td></tr>
+<tr><td>Ponto de equilíbrio estimado</td><td><strong>{{ breakeven|brl }}</strong></td></tr>
+<tr><td>Classificação dos gastos</td><td><strong>{{ '%.1f'|format(classification_coverage) }}%</strong></td></tr>
+</tbody></table></div></div>
+</div>
+
+<div class="panel"><h2>Quanto cada gasto representa</h2><p class="muted">A coluna “% da receita” mostra quanto cada categoria consome do faturamento. A coluna “% dos gastos” mostra o peso dela dentro das despesas.</p><div class="table-wrap"><table><thead><tr><th>Categoria</th><th>Valor</th><th>% da receita</th><th>% dos gastos</th></tr></thead><tbody>
+{% for r in expense_rows %}<tr><td><strong>{{ r.category }}</strong></td><td>{{ r.amount|brl }}</td><td>{{ '%.1f'|format(r.pct_revenue) }}%</td><td>{{ '%.1f'|format(r.pct_expense) }}%</td></tr>{% else %}<tr><td colspan="4" class="empty">Sem despesas pagas no período.</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<div class="grid-two charts-grid"><div class="panel"><h2>Composição das receitas</h2><canvas id="revChart"></canvas></div><div class="panel"><h2>Composição dos gastos</h2><canvas id="expChart"></canvas></div></div>
+
+<div class="panel"><h2>DRE por unidade</h2><div class="table-wrap"><table><thead><tr><th>Unidade</th><th>Receita</th><th>Lucro bruto</th><th>Margem bruta</th><th>Despesas</th><th>Resultado líquido</th><th>Margem líquida</th><th>Ponto de equilíbrio</th></tr></thead><tbody>
+{% for u in unit_rows %}<tr><td><strong>{{ u.store }}</strong></td><td>{{ u.revenue|brl }}</td><td>{{ u.gross_profit|brl }}</td><td>{{ '%.1f'|format(u.gross_margin) }}%</td><td>{{ u.expense|brl }}</td><td><strong class="{% if u.result >= 0 %}positive{% else %}negative{% endif %}">{{ u.result|brl }}</strong></td><td>{{ '%.1f'|format(u.net_margin) }}%</td><td>{{ u.breakeven|brl }}</td></tr>{% else %}<tr><td colspan="8" class="empty">Nenhuma unidade com movimento.</td></tr>{% endfor %}
+</tbody></table></div></div>
+
 <script>
 const revLabels={{ revenue_by_category.keys()|list|tojson }}; const revData={{ revenue_by_category.values()|list|tojson }};
 const expLabels={{ expense_by_category.keys()|list|tojson }}; const expData={{ expense_by_category.values()|list|tojson }};
-new Chart(document.getElementById('revChart'),{type:'doughnut',data:{labels:revLabels,datasets:[{data:revData,backgroundColor:['#d71920','#1d4ed8','#d9c7a2','#8b5e3c','#6b7280','#f59e0b']}]},options:{plugins:{legend:{position:'bottom'}}}});
-new Chart(document.getElementById('expChart'),{type:'doughnut',data:{labels:expLabels,datasets:[{data:expData,backgroundColor:['#d71920','#1d4ed8','#d9c7a2','#8b5e3c','#6b7280','#f59e0b']}]},options:{plugins:{legend:{position:'bottom'}}}});
+new Chart(document.getElementById('revChart'),{type:'doughnut',data:{labels:revLabels,datasets:[{data:revData}]},options:{plugins:{legend:{position:'bottom'}}}});
+new Chart(document.getElementById('expChart'),{type:'doughnut',data:{labels:expLabels,datasets:[{data:expData}]},options:{plugins:{legend:{position:'bottom'}}}});
 </script>
 {% endblock %}
