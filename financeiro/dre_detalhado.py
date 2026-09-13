@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+import unicodedata
 from datetime import date, datetime
 
 from flask import send_file
@@ -53,6 +54,97 @@ def normalize_dre_class(value):
     return value if value in DRE_CLASS_LABELS else "nao_classificado"
 
 
+def _plain(value):
+    value = (value or "").lower().strip()
+    return "".join(c for c in unicodedata.normalize("NFD", value) if unicodedata.category(c) != "Mn")
+
+
+def infer_dre_class(category="", description="", supplier="", notes=""):
+    """Classifica por palavras-chave. Em dúvida, mantém como não classificado."""
+    text = _plain(" ".join([category or "", description or "", supplier or "", notes or ""]))
+
+    # Despesas financeiras primeiro, para não confundir 'taxa bancária' com imposto.
+    financial_terms = [
+        "juros", "tarifa bancaria", "tarifa banco", "taxa bancaria", "antecipacao",
+        "emprestimo", "financiamento", "multa bancaria", "encargo financeiro",
+    ]
+    if any(term in text for term in financial_terms):
+        return "financeira"
+
+    tax_terms = [
+        "imposto", "tributo", "simples nacional", " das ", "darf", "icms", "iss",
+        "ipi", "pis", "cofins", "irpj", "csll", "iptu", "ipva", "taxa prefeitura",
+        "licenca", "alvara",
+    ]
+    padded = f" {text} "
+    if any(term in padded for term in tax_terms):
+        return "impostos"
+
+    cmv_terms = [
+        "chopp", "chope", "cerveja", "barril", "bebida", "mercadoria", "estoque",
+        "insumo", "materia prima", "co2", "gas carbonico", "copo", "growler",
+        "gelo", "embalagem", "produto para revenda", "compra produto",
+    ]
+    if any(term in text for term in cmv_terms):
+        return "cmv"
+
+    variable_terms = [
+        "taxa cartao", "taxa de cartao", "maquininha", "adquirente", "taxa pix",
+        "frete", "entrega", "motoboy", "comissao", "comissao venda", "comissao vendedor",
+        "energia", "eletricidade", "consumo energia",
+    ]
+    if any(term in text for term in variable_terms):
+        return "variavel"
+
+    fixed_terms = [
+        "aluguel", "internet", "telefone", "celular", "contabilidade", "contador",
+        "escritorio", "software", "sistema", "royalty", "royalties", "propaganda",
+        "marketing", "agua", "salario", "folha", "pro labore", "seguro", "limpeza",
+        "manutencao", "condominio", "mensalidade", "licenciamento mensal", "administrativo",
+    ]
+    if any(term in text for term in fixed_terms):
+        return "fixa"
+
+    return "nao_classificado"
+
+
+def auto_classify_existing_costs():
+    """Classifica somente itens sem classificação; nunca sobrescreve escolha manual."""
+    changed = False
+
+    existing = {row.payable_id: row for row in CostDreClass.query.all()}
+    for payable in Payable.query.all():
+        row = existing.get(payable.id)
+        if row and row.dre_class != "nao_classificado":
+            continue
+        inferred = infer_dre_class(payable.category, payable.description, payable.supplier, payable.notes)
+        if inferred == "nao_classificado":
+            continue
+        if row:
+            row.dre_class = inferred
+        else:
+            db.session.add(CostDreClass(payable_id=payable.id, dre_class=inferred))
+        changed = True
+
+    recurring_existing = {row.recurring_cost_id: row for row in RecurringDreClass.query.all()}
+    for recurring in RecurringCost.query.all():
+        row = recurring_existing.get(recurring.id)
+        if row and row.dre_class != "nao_classificado":
+            continue
+        inferred = infer_dre_class(recurring.category, recurring.description, recurring.supplier, recurring.notes)
+        if inferred == "nao_classificado":
+            continue
+        if row:
+            row.dre_class = inferred
+        else:
+            db.session.add(RecurringDreClass(recurring_cost_id=recurring.id, dre_class=inferred))
+        changed = True
+
+    if changed:
+        db.session.commit()
+    return changed
+
+
 def sync_recurring_dre_classes():
     rules = {r.recurring_cost_id: r.dre_class for r in RecurringDreClass.query.all()}
     if not rules:
@@ -60,11 +152,14 @@ def sync_recurring_dre_classes():
     changed = False
     for occurrence in RecurringOccurrence.query.all():
         dre_class = rules.get(occurrence.recurring_cost_id)
-        if not dre_class:
+        if not dre_class or dre_class == "nao_classificado":
             continue
         existing = CostDreClass.query.filter_by(payable_id=occurrence.payable_id).first()
         if not existing:
             db.session.add(CostDreClass(payable_id=occurrence.payable_id, dre_class=dre_class))
+            changed = True
+        elif existing.dre_class == "nao_classificado":
+            existing.dre_class = dre_class
             changed = True
     if changed:
         db.session.commit()
@@ -74,6 +169,7 @@ def sync_recurring_dre_classes():
 def ensure_dre_support():
     try:
         db.create_all()
+        auto_classify_existing_costs()
         sync_recurring_dre_classes()
     except Exception:
         db.session.rollback()
@@ -85,7 +181,11 @@ def save_cost_with_dre():
     store = core.request.form.get("store", "").strip() or core.request.form.get("new_store", "").strip() or "Geral"
     total_amount = core.parse_money(core.request.form.get("total_amount"))
     due_date = core.parse_date(core.request.form.get("due_date"))
+    category = core.request.form.get("category", "Outros").strip() or "Outros"
+    notes = core.request.form.get("notes", "").strip()
     dre_class = normalize_dre_class(core.request.form.get("dre_class"))
+    if dre_class == "nao_classificado":
+        dre_class = infer_dre_class(category, description, supplier, notes)
     if not supplier or not description or total_amount <= 0 or not due_date:
         core.flash("Preencha loja, fornecedor, descrição, valor e vencimento.", "danger")
         return core.redirect(core.url_for("new_payable"))
@@ -95,10 +195,10 @@ def save_cost_with_dre():
         store=store,
         supplier=supplier,
         description=description,
-        category=core.request.form.get("category", "Outros").strip() or "Outros",
+        category=category,
         total_amount=total_amount,
         document=core.request.form.get("document", "").strip(),
-        notes=core.request.form.get("notes", "").strip(),
+        notes=notes,
     )
     recurring = core.request.form.get("is_recurring") == "1"
 
