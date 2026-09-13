@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% block title %}{{ 'Editar' if account else 'Nova' }} Conta{% endblock %}{% block content %}
-<div class="page-head"><div><h1>{{ 'Editar conta' if account else 'Nova conta a pagar' }}</h1><p>Cadastre o compromisso por loja/unidade e, se quiser, já informe uma entrada.</p></div></div>
-<form method="post" class="panel form-grid">
+<div class="page-head"><div><h1>{{ 'Editar conta' if account else 'Nova conta a pagar' }}</h1><p>Cadastre o compromisso por loja/unidade e, se quiser, marque como recorrente para não precisar lançar novamente todo mês.</p></div></div>
+<form method="post" class="panel form-grid" {% if not account %}action="{{ url_for('save_cost') }}"{% endif %}>
 <label>Loja / Unidade<select name="store"><option value="">Selecione ou cadastre abaixo</option>{% for s in stores %}<option value="{{ s }}" {% if account and account.store==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
 <label>Nova loja / unidade<input name="new_store" placeholder="Ex.: Mogi Mirim, Mogi Guaçu, Amparo"></label>
 <label>Fornecedor<input name="supplier" required value="{{ account.supplier if account else '' }}"></label>
@@ -9,10 +9,15 @@
 <label>Documento / referência<input name="document" value="{{ account.document if account else '' }}" placeholder="NF, boleto, contrato..."></label>
 <label>Valor total<input name="total_amount" required inputmode="decimal" value="{{ ('%.2f'|format(account.total_amount)).replace('.',',') if account else '' }}" placeholder="0,00"></label>
 <label>Vencimento<input type="date" name="due_date" required value="{{ account.due_date.isoformat() if account else '' }}"></label>
-{% if not account %}<label>Entrada / pagamento inicial<input name="entry_amount" inputmode="decimal" placeholder="0,00"></label>
+{% if not account %}
+<label class="full"><span style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="is_recurring" value="1" id="is_recurring" style="width:auto"> <strong>Conta recorrente</strong> — repetir automaticamente todos os meses</span></label>
+<label id="recurrence_end_wrap" style="display:none">Repetir até (opcional)<input type="date" name="recurrence_end"><small>Se deixar em branco, o sistema continuará criando os próximos meses automaticamente.</small></label>
+<label>Entrada / pagamento inicial<input name="entry_amount" inputmode="decimal" placeholder="0,00"></label>
 <label>Data da entrada<input type="date" name="entry_date" value="{{ today.isoformat() if today is defined else '' }}"></label>
-<label>Forma da entrada<select name="entry_method"><option>PIX</option><option>Boleto</option><option>Transferência</option><option>Cartão</option><option>Dinheiro</option><option>Outro</option></select></label>{% endif %}
+<label>Forma da entrada<select name="entry_method"><option>PIX</option><option>Boleto</option><option>Transferência</option><option>Cartão</option><option>Dinheiro</option><option>Outro</option></select></label>
+{% endif %}
 <label class="full">Observações<textarea name="notes" rows="4">{{ account.notes if account else '' }}</textarea></label>
 <div class="full actions"><button class="btn primary" type="submit">Salvar conta</button><a class="btn" href="{{ url_for('dashboard') }}">Cancelar</a></div>
 </form>
+{% if not account %}<script>const cb=document.getElementById('is_recurring'),w=document.getElementById('recurrence_end_wrap');cb.addEventListener('change',()=>w.style.display=cb.checked?'block':'none');</script>{% endif %}
 {% endblock %}
