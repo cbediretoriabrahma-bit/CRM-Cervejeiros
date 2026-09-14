@@ -105,21 +105,19 @@ def _qualification_reply_final_v2(lead, channel):
 
     if inbound_count <= 1:
         return (
-            "Bem-vindo ao CERVEJEIROS by WOC Group! 🍻\n\n"
-            "Você está iniciando seu atendimento para conhecer nosso sistema de geladeiras de autoatendimento de chopp "
+            "*Bem-vindo ao CERVEJEIROS by WOC Group!* 🍻\n\n"
+            "Você está iniciando seu atendimento para conhecer nosso *sistema de geladeiras de autoatendimento de chopp* "
             "para condomínios, clubes e locais de grande circulação.\n\n"
-            "Nosso modelo foi desenvolvido para oferecer uma operação prática, tecnológica e escalável.\n\n"
-            "Para começarmos, em qual cidade você pretende operar?"
+            "Nosso modelo foi desenvolvido para oferecer uma operação *prática, tecnológica e escalável*.\n\n"
+            "*Para começarmos, em qual cidade você pretende operar?*"
         )
 
     if inbound_count == 2:
-        return f"Perfeito, {first}! Em qual estado fica essa cidade?"
+        return "Perfeito! *Em qual estado fica essa cidade?*"
 
     if inbound_count == 3:
-        # O webhook envia o vídeo imediatamente antes desta mensagem.
-        # O início do texto também é usado pelo patch do Instagram para disparar o vídeo.
         return fm._buttons_marker(
-            "Agora vamos entender um pouco melhor o seu perfil.\n\nVocê já possui contato ou acesso a condomínios, clubes ou locais de grande circulação?",
+            "*Agora vamos entender um pouco melhor o seu perfil.*\n\n*Você já possui contato ou acesso a condomínios, clubes ou locais de grande circulação?*",
             [
                 {"id": "1", "title": "Locais em vista"},
                 {"id": "2", "title": "Alguns contatos"},
@@ -129,7 +127,7 @@ def _qualification_reply_final_v2(lead, channel):
 
     if inbound_count == 4:
         return fm._buttons_marker(
-            "Qual faixa de investimento inicial você pretende realizar?",
+            "*Qual faixa de investimento inicial você pretende realizar?*",
             [
                 {"id": "1", "title": "R$18.900-29.999"},
                 {"id": "2", "title": "R$30.000-44.999"},
@@ -139,7 +137,7 @@ def _qualification_reply_final_v2(lead, channel):
 
     if inbound_count == 5:
         return fm._list_marker(
-            "Em quanto tempo você pretende iniciar sua operação?",
+            "*Em quanto tempo você pretende iniciar sua operação?*",
             "Escolher prazo",
             [
                 {"id": "1", "title": "Imediatamente"},
@@ -151,30 +149,35 @@ def _qualification_reply_final_v2(lead, channel):
 
     if inbound_count == 6:
         return fm._buttons_marker(
-            "Qual é o seu principal objetivo ao entrar para o modelo Cervejeiros?",
+            (
+                "*Qual é o seu principal objetivo ao entrar para o modelo Cervejeiros?*\n\n"
+                "1️⃣ *Testar o modelo de negócio*\n"
+                "2️⃣ *Nova fonte de renda*\n"
+                "3️⃣ *Expandir o modelo de negócio em minha cidade*"
+            ),
             [
-                {"id": "1", "title": "Construir e expandir"},
-                {"id": "2", "title": "Começar e crescer"},
-                {"id": "3", "title": "Nova fonte de renda"},
+                {"id": "1", "title": "Testar o modelo"},
+                {"id": "2", "title": "Nova fonte de renda"},
+                {"id": "3", "title": "Expandir na cidade"},
             ],
         )
 
     if inbound_count == 7:
         return fm._buttons_marker(
             (
-                f"Perfeito, {first}! 🍻 Agora que conhecemos um pouco melhor o seu perfil, queremos apresentar a CERVEJEIROS by WOC Group.\n\n"
-                "A Cervejeiros atua com geladeiras de autoatendimento de chopp para condomínios, clubes e locais de grande circulação, "
-                "em um modelo pensado para ser prático, tecnológico e escalável.\n\n"
-                "Hoje já possuímos licenciados em vários estados do Brasil:\n"
+                f"*Perfeito, {first}!* 🍻 Agora que conhecemos um pouco melhor o seu perfil, queremos apresentar a *CERVEJEIROS by WOC Group*.\n\n"
+                "A Cervejeiros atua com *geladeiras de autoatendimento de chopp para condomínios, clubes e locais de grande circulação*, "
+                "em um modelo pensado para ser *prático, tecnológico e escalável*.\n\n"
+                "*Hoje já possuímos licenciados em vários estados do Brasil:*\n"
                 "📍 São Paulo\n"
                 "📍 Minas Gerais\n"
                 "📍 Goiás\n"
                 "📍 Rio de Janeiro\n"
                 "📍 Amazonas\n\n"
-                "O licenciado conta com sistema de autoatendimento 24 horas, tecnologia de pagamento, dashboard para acompanhamento das vendas, "
+                "O licenciado conta com *sistema de autoatendimento 24 horas, tecnologia de pagamento, dashboard para acompanhamento das vendas*, "
                 "controle da operação, suporte de implantação, treinamento, materiais comerciais e possibilidade de expansão para novos pontos.\n\n"
-                "O modelo não exige funcionário no ponto e foi estruturado para permitir crescimento gradual em condomínios, clubes e outros locais de grande circulação.\n\n"
-                "Gostaria de conversar com um de nossos consultores para conhecer o projeto completo, os planos, valores e as oportunidades disponíveis para sua região?"
+                "O modelo *não exige funcionário no ponto* e foi estruturado para permitir crescimento gradual em condomínios, clubes e outros locais de grande circulação.\n\n"
+                "*Gostaria de conversar com um de nossos consultores para conhecer o projeto completo, os planos, valores e as oportunidades disponíveis para sua região?*"
             ),
             [
                 {"id": "1", "title": "Quero agendar"},
@@ -189,14 +192,14 @@ def _qualification_reply_final_v2(lead, channel):
             if len(options) >= 3:
                 crm.db.session.commit()
                 return fm._buttons_marker(
-                    "Excelente! 🍻 Escolha um dos horários disponíveis para conversar com nosso consultor. Cada reunião dura 1 hora:",
+                    "*Excelente!* 🍻 *Escolha um dos horários disponíveis para conversar com nosso consultor.* Cada reunião dura 1 hora:",
                     [
                         {"id": "1", "title": sc._format_slot(options[0])[:20]},
                         {"id": "2", "title": sc._format_slot(options[1])[:20]},
                         {"id": "3", "title": sc._format_slot(options[2])[:20]},
                     ],
                 )
-            return "Excelente! 🍻 Nosso consultor vai entrar em contato para combinar o melhor horário para sua reunião."
+            return "*Excelente!* 🍻 Nosso consultor vai entrar em contato para combinar o melhor horário para sua reunião."
         if lead.meeting_interest == "Talvez":
             return (
                 "Sem problema. 🍻 Vamos manter seu perfil em acompanhamento e podemos continuar enviando informações "
@@ -210,7 +213,7 @@ def _qualification_reply_final_v2(lead, channel):
             try:
                 slot = datetime.fromisoformat(selected)
                 return (
-                    f"✅ Reunião confirmada para {sc._format_slot(slot)}. Duração: 1 hora. "
+                    f"✅ *Reunião confirmada para {sc._format_slot(slot)}.* Duração: 1 hora. "
                     "Nosso consultor falará com você no horário agendado. 🍻"
                 )
             except Exception:
@@ -220,7 +223,7 @@ def _qualification_reply_final_v2(lead, channel):
         crm.db.session.commit()
         if len(options) >= 3:
             return fm._buttons_marker(
-                "Esse horário não está mais disponível. Escolha uma destas novas opções:",
+                "*Esse horário não está mais disponível.* Escolha uma destas novas opções:",
                 [
                     {"id": "1", "title": sc._format_slot(options[0])[:20]},
                     {"id": "2", "title": sc._format_slot(options[1])[:20]},
@@ -229,6 +232,17 @@ def _qualification_reply_final_v2(lead, channel):
             )
 
     return None
+
+
+def _parse_objective_final(text):
+    t = (text or "").strip().lower()
+    if t.startswith("1") or "testar" in t:
+        return "avaliar"
+    if t.startswith("2") or "nova fonte" in t or "renda" in t:
+        return "renda_complementar"
+    if t.startswith("3") or "expandir" in t:
+        return "expandir"
+    return p._parse_objective(text)
 
 
 def _apply_answer_final_v2(lead, text, inbound_count, channel):
@@ -258,7 +272,7 @@ def _apply_answer_final_v2(lead, text, inbound_count, channel):
         lead.timeframe = sc._parse_timeframe_final(text)
 
     elif inbound_count == 7:
-        sc._set_tag(lead, "Q_OBJECTIVE", p._parse_objective(text))
+        sc._set_tag(lead, "Q_OBJECTIVE", _parse_objective_final(text))
 
     elif inbound_count == 8:
         lead.meeting_interest = p._yes_no(text)
@@ -280,7 +294,6 @@ def _apply_answer_final_v2(lead, text, inbound_count, channel):
     ))
 
 
-# Sobrescreve tanto o módulo base quanto o módulo que mantém o webhook rico.
 p._qualification_reply = _qualification_reply_final_v2
 p._reply_for_message = lambda lead, text: _qualification_reply_final_v2(lead, "WhatsApp")
 p._reply_for_instagram = lambda lead: _qualification_reply_final_v2(lead, "Instagram")
