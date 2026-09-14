@@ -20,6 +20,9 @@ import reply_format_patch  # noqa: F401
 # Aplica por último o fluxo com vídeo e escolhas interativas.
 import flow_media_patch  # noqa: F401
 
+# Faz o Instagram enviar o mesmo vídeo de qualificação antes da terceira pergunta.
+import instagram_video_patch  # noqa: F401
+
 crm = patched.crm
 app = patched.app
 
