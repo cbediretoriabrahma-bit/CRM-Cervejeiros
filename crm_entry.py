@@ -187,3 +187,6 @@ import final_qualification_patch  # noqa: F401,E402
 # Correções finais de robustez: aceita respostas repetidas válidas e interpreta
 # corretamente os textos do convite de reunião.
 import flow_resilience_patch  # noqa: F401,E402
+
+# Gestão de leads arquivados/excluídos fica isolada do fluxo de respostas automáticas.
+import lead_management_patch  # noqa: F401,E402
