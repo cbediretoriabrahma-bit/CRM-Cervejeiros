@@ -183,3 +183,7 @@ def lead_second_meeting(lead_id):
 
 # Carrega por último a versão final do fluxo de qualificação, apresentação e reunião.
 import final_qualification_patch  # noqa: F401,E402
+
+# Correções finais de robustez: aceita respostas repetidas válidas e interpreta
+# corretamente os textos do convite de reunião.
+import flow_resilience_patch  # noqa: F401,E402
