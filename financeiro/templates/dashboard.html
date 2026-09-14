@@ -2,7 +2,7 @@
 <div class="page-head"><div><h1>Painel Financeiro</h1><p>Receitas, despesas, contas a pagar, ponto de equilíbrio e saúde financeira por unidade.</p></div><div class="actions"><a class="btn primary" href="{{ url_for('new_payable') }}">+ Conta a pagar</a><a class="btn secondary" href="{{ url_for('new_revenue') }}">+ Receita</a><a class="btn" href="{{ url_for('dre') }}">Ver DRE</a><a class="btn" href="{{ url_for('export_report', kind='custos', fmt='pdf', store=store_filter, status=status_filter, q=search, date_from=date_from, date_to=date_to) }}">Baixar PDF</a><a class="btn" href="{{ url_for('export_report', kind='custos', fmt='xlsx', store=store_filter, status=status_filter, q=search, date_from=date_from, date_to=date_to) }}">Baixar Excel</a><button class="btn" type="button" onclick="window.print()">Imprimir</button></div></div>
 
 <form class="filters" method="get">
-<select name="store"><option value="">Todas as unidades</option>{% for s in stores %}<option value="{{ s }}" {% if store_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+<select name="store"><option value="">Todas as unidades</option>{% for s in stores %}<option value="{{ s }}" {% if store_filter==s or (selected_stores is defined and s in selected_stores) %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
 <label>Mês financeiro<input type="month" name="month" value="{{ month }}"></label>
 <input name="q" value="{{ search }}" placeholder="Buscar fornecedor, conta, categoria ou loja">
 <label>Vencimento de<input type="date" name="date_from" value="{{ date_from }}"></label>
@@ -19,6 +19,12 @@
 <div class="metric red-border"><span>Despesas pagas</span><strong>{{ expense_month|brl }}</strong></div>
 <div class="metric {% if result_month >= 0 %}green-border{% else %}red-border{% endif %}"><span>Resultado</span><strong>{{ result_month|brl }}</strong></div>
 <div class="metric"><span>Ponto de equilíbrio gerencial</span><strong>{{ expense_month|brl }}</strong><small>Receita mínima para cobrir os custos pagos do mês.</small></div>
+<div class="metric orange-border"><span>CMV</span><strong>{{ cmv_month|default(0)|brl }}</strong></div>
+<div class="metric orange-border"><span>CMV %</span><strong>{{ '%.1f'|format(cmv_pct|default(0)) }}%</strong><small>CMV ÷ Receita</small></div>
+<div class="metric {% if gross_profit_month|default(0) >= 0 %}green-border{% else %}red-border{% endif %}"><span>Lucro bruto</span><strong>{{ gross_profit_month|default(0)|brl }}</strong></div>
+<div class="metric {% if gross_margin_pct|default(0) >= 0 %}green-border{% else %}red-border{% endif %}"><span>Lucro bruto %</span><strong>{{ '%.1f'|format(gross_margin_pct|default(0)) }}%</strong><small>(Receita − CMV) ÷ Receita</small></div>
+<div class="metric {% if net_profit_month|default(0) >= 0 %}green-border{% else %}red-border{% endif %}"><span>Lucro líquido</span><strong>{{ net_profit_month|default(0)|brl }}</strong></div>
+<div class="metric {% if net_margin_pct|default(0) >= 0 %}green-border{% else %}red-border{% endif %}"><span>Lucro líquido %</span><strong>{{ '%.1f'|format(net_margin_pct|default(0)) }}%</strong><small>Lucro líquido ÷ Receita</small></div>
 <div class="metric"><span>Contas lançadas no filtro</span><strong>{{ filtered_total|brl }}</strong></div>
 <div class="metric green-border"><span>Pago no filtro</span><strong>{{ filtered_paid|brl }}</strong></div>
 <div class="metric red-border"><span>Saldo em aberto</span><strong>{{ filtered_balance|brl }}</strong></div>
@@ -79,8 +85,8 @@
 </div>
 
 <div class="legend"><span class="dot red"></span>Vencido <span class="dot yellow"></span>Até 3 dias <span class="dot orange"></span>Até 7 dias <span class="dot blue"></span>A vencer <span class="dot purple"></span>Parcial <span class="dot green"></span>Pago</div>
-<div class="table-wrap"><table><thead><tr><th>Status</th><th>Loja</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th></th></tr></thead><tbody>
-{% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td><strong>{{ a.store or 'Geral' }}</strong></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td>{{ a.supplier }}</td><td>{{ a.description }}</td><td>{{ a.total_amount|brl }}</td><td>{{ a.paid_amount|brl }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Abrir</a></td></tr>{% else %}<tr><td colspan="9" class="empty">Nenhuma conta encontrada.</td></tr>{% endfor %}
+<div class="table-wrap"><table><thead><tr><th>Status</th><th>Loja</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th>Ações</th></tr></thead><tbody>
+{% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td><strong>{{ a.store or 'Geral' }}</strong></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td>{{ a.supplier }}</td><td>{{ a.description }}</td><td>{{ a.total_amount|brl }}</td><td>{{ a.paid_amount|brl }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Abrir</a>{% if a.balance > 0 %}<form class="quick-settle" method="post" action="{{ url_for('settle', account_id=a.id) }}" style="display:inline"><input type="hidden" name="payment_method" value="Baixa rápida"><button class="btn primary small" type="submit">✓ Baixar</button></form>{% endif %}</div></td></tr>{% else %}<tr><td colspan="9" class="empty">Nenhuma conta encontrada.</td></tr>{% endfor %}
 </tbody></table></div>
 
 <script>
@@ -93,5 +99,22 @@ new Chart(document.getElementById('unitsChart'),{type:'bar',data:{labels:labels,
 new Chart(document.getElementById('resultChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Resultado',data:results,backgroundColor:results.map(v=>v>=0?'#1d4ed8':'#d71920')}]},options:{responsive:true,plugins:{legend:{display:false}}}});
 new Chart(document.getElementById('breakEvenChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Receita',data:revenues,backgroundColor:'#1d4ed8'},{label:'Ponto de equilíbrio',data:expenses,backgroundColor:'#c9a66b'}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});
 new Chart(document.getElementById('marginChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Margem %',data:margins,backgroundColor:margins.map(v=>v>=20?'#16a34a':v>=10?'#1d4ed8':v>=0?'#eab308':'#d71920')}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>v+'%'}}}}});
+
+document.querySelectorAll('.quick-settle').forEach(form=>{
+  form.addEventListener('submit',async ev=>{
+    ev.preventDefault();
+    if(!confirm('Confirmar baixa integral desta conta como paga?')) return;
+    const button=form.querySelector('button');
+    button.disabled=true; button.textContent='Baixando...';
+    try{
+      const response=await fetch(form.action,{method:'POST',body:new FormData(form),credentials:'same-origin'});
+      if(!response.ok) throw new Error('Falha ao registrar a baixa');
+      window.location.reload();
+    }catch(e){
+      button.disabled=false; button.textContent='✓ Baixar';
+      alert('Não foi possível baixar a conta. Abra a conta e tente novamente.');
+    }
+  });
+});
 </script>
 {% endblock %}
