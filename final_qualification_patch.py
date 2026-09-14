@@ -45,6 +45,7 @@ def _score_final_v2(lead):
     objective = sc._tag_value(lead, "Q_OBJECTIVE")
     score += {
         "expandir": 10,
+        "investidor": 6,
         "avaliar": 6,
         "renda_complementar": 3,
     }.get(objective, 0)
@@ -151,12 +152,12 @@ def _qualification_reply_final_v2(lead, channel):
         return fm._buttons_marker(
             (
                 "*Qual é o seu principal objetivo ao entrar para o modelo Cervejeiros?*\n\n"
-                "1️⃣ *Testar o modelo de negócio*\n"
+                "1️⃣ *Investidor*\n"
                 "2️⃣ *Nova fonte de renda*\n"
                 "3️⃣ *Expandir o modelo de negócio em minha cidade*"
             ),
             [
-                {"id": "1", "title": "Testar o modelo"},
+                {"id": "1", "title": "Investidor"},
                 {"id": "2", "title": "Nova fonte de renda"},
                 {"id": "3", "title": "Expandir na cidade"},
             ],
@@ -236,8 +237,8 @@ def _qualification_reply_final_v2(lead, channel):
 
 def _parse_objective_final(text):
     t = (text or "").strip().lower()
-    if t.startswith("1") or "testar" in t:
-        return "avaliar"
+    if t.startswith("1") or "investidor" in t:
+        return "investidor"
     if t.startswith("2") or "nova fonte" in t or "renda" in t:
         return "renda_complementar"
     if t.startswith("3") or "expandir" in t:
