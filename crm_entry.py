@@ -7,6 +7,12 @@ from flask import flash, redirect, render_template, request, url_for
 # O novo pipeline comercial é aplicado por cima, sem perder as integrações existentes.
 import patched_app as patched
 
+# Garante que o patch final com as perguntas, pontuação e pipeline mais recentes
+# seja aplicado também quando o CRM inicia pelo gunicorn crm_entry:app.
+# Antes, o fluxo novo dependia do carregamento automático de sitecustomize e o
+# WhatsApp podia continuar respondendo com as perguntas antigas de patched_app.py.
+import sitecustomize  # noqa: F401
+
 crm = patched.crm
 app = patched.app
 
