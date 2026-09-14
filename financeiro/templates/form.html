@@ -5,8 +5,37 @@
 <label>Nova loja / unidade<input name="new_store" placeholder="Ex.: Mogi Mirim, Mogi Guaçu, Amparo"></label>
 <label>Fornecedor<input name="supplier" required value="{{ account.supplier if account else '' }}"></label>
 <label>Descrição<input name="description" required value="{{ account.description if account else '' }}"></label>
-<label>Categoria<input name="category" value="{{ account.category if account else '' }}" placeholder="Ex.: Chopp, aluguel, energia, imposto"></label>
-{% if not account %}<label>Classificação no DRE<select name="dre_class" required><option value="nao_classificado">Não classificado</option><option value="cmv">Custo direto / CMV</option><option value="fixa">Despesa operacional fixa</option><option value="variavel">Despesa operacional variável</option><option value="impostos">Impostos e taxas</option><option value="financeira">Despesa financeira</option></select><small>Essa classificação permite calcular margem bruta, margem líquida e ponto de equilíbrio com mais precisão.</small></label>{% endif %}
+<label>Categoria
+<select name="category" id="category_select">
+<option value="">Selecione a categoria</option>
+<optgroup label="CMV">
+<option>CMV: Custo de mercadorias</option><option>CMV: Custo de geladeiras</option>
+</optgroup>
+<optgroup label="Despesas com pessoal">
+<option>Pessoal empresa: Salários</option><option>Pessoal empresa: Freelancer</option><option>Pessoal empresa: Horas extras</option><option>Pessoal empresa: Comissões</option><option>Pessoal empresa: INSS</option><option>Pessoal empresa: FGTS</option><option>Pessoal empresa: Refeições</option>
+</optgroup>
+<optgroup label="Despesas de ocupação">
+<option>Ocupação: Aluguel</option><option>Ocupação: Condomínio</option><option>Ocupação: IPTU</option><option>Ocupação: Energia elétrica</option><option>Ocupação: Água</option><option>Ocupação: Internet</option><option>Ocupação: Telefone</option><option>Ocupação: Segurança</option><option>Ocupação: Limpeza</option>
+</optgroup>
+<optgroup label="Despesas comerciais">
+<option>Comercial: Marketing</option><option>Comercial: Taxa de cartão</option><option>Comercial: Propaganda</option><option>Comercial: Ação de divulgação</option><option>Comercial: Combustível</option><option>Comercial: Manutenção de veículo</option><option>Comercial: Manutenção de loja</option>
+</optgroup>
+<optgroup label="Despesas administrativas">
+<option>Administrativa: Contabilidade</option><option>Administrativa: Sistema ERP</option><option>Administrativa: Material de escritório</option><option>Administrativa: Honorários advocatícios</option><option>Administrativa: Licenças e alvarás</option>
+</optgroup>
+<optgroup label="Despesas financeiras">
+<option>Financeira: Juros</option><option>Financeira: Antecipação de cartão</option>
+</optgroup>
+<optgroup label="Impostos sobre vendas">
+<option>Impostos: Simples Nacional</option><option>Impostos: ICMS</option><option>Impostos: ISS</option><option>Impostos: PIS/COFINS</option><option>Impostos: Outros impostos sobre vendas</option>
+</optgroup>
+<optgroup label="Despesas pessoais — fora do DRE operacional">
+<option>Despesa pessoal: Mercado</option><option>Despesa pessoal: Farmácia</option><option>Despesa pessoal: Passeio</option><option>Despesa pessoal: Viagens</option><option>Despesa pessoal: Escola</option><option>Despesa pessoal: Pet Shop</option><option>Despesa pessoal: Empregada</option><option>Despesa pessoal: Compra na loja</option><option>Despesa pessoal: Saúde</option><option>Despesa pessoal: Unimed</option><option>Despesa pessoal: Dentista</option><option>Despesa pessoal: Parcelamento de imposto</option><option>Despesa pessoal: Financiamento</option><option>Despesa pessoal: Karina</option><option>Despesa pessoal: iFood</option><option>Despesa pessoal: Piscina</option><option>Despesa pessoal: Cartão de crédito</option><option>Despesa pessoal: Combustível</option><option>Despesa pessoal: Energia elétrica</option><option>Despesa pessoal: Água</option><option>Despesa pessoal: Condomínio</option><option>Despesa pessoal: Telefone</option><option>Despesa pessoal: Internet</option>
+</optgroup>
+<option>Outros</option>
+</select>
+</label>
+{% if not account %}<label>Classificação no DRE<select name="dre_class" id="dre_class" required><option value="nao_classificado">Não classificado</option><option value="cmv">CMV</option><option value="pessoal_empresa">Despesas com pessoal</option><option value="ocupacao">Despesas de ocupação</option><option value="comercial">Despesas comerciais</option><option value="administrativa">Despesas administrativas</option><option value="financeira">Despesas financeiras</option><option value="impostos">Impostos sobre vendas</option><option value="pessoal">Despesas pessoais — fora do DRE operacional</option></select><small>A categoria escolhida já preenche automaticamente a classificação. Despesas pessoais ficam separadas do DRE operacional.</small></label>{% endif %}
 <label>Documento / referência<input name="document" value="{{ account.document if account else '' }}" placeholder="NF, boleto, contrato..."></label>
 <label>Valor total<input name="total_amount" required inputmode="decimal" value="{{ ('%.2f'|format(account.total_amount)).replace('.',',') if account else '' }}" placeholder="0,00"></label>
 <label>Vencimento<input type="date" name="due_date" required value="{{ account.due_date.isoformat() if account else '' }}"></label>
@@ -20,5 +49,10 @@
 <label class="full">Observações<textarea name="notes" rows="4">{{ account.notes if account else '' }}</textarea></label>
 <div class="full actions"><button class="btn primary" type="submit">Salvar conta</button><a class="btn" href="{{ url_for('dashboard') }}">Cancelar</a></div>
 </form>
-{% if not account %}<script>const cb=document.getElementById('is_recurring'),w=document.getElementById('recurrence_end_wrap');cb.addEventListener('change',()=>w.style.display=cb.checked?'block':'none');</script>{% endif %}
+{% if not account %}<script>
+const cb=document.getElementById('is_recurring'),w=document.getElementById('recurrence_end_wrap');cb.addEventListener('change',()=>w.style.display=cb.checked?'block':'none');
+const category=document.getElementById('category_select'),dre=document.getElementById('dre_class');
+const categoryMap=[['CMV:','cmv'],['Pessoal empresa:','pessoal_empresa'],['Ocupação:','ocupacao'],['Comercial:','comercial'],['Administrativa:','administrativa'],['Financeira:','financeira'],['Impostos:','impostos'],['Despesa pessoal:','pessoal']];
+category.addEventListener('change',()=>{const found=categoryMap.find(([prefix])=>category.value.startsWith(prefix)); if(found) dre.value=found[1];});
+</script>{% endif %}
 {% endblock %}
