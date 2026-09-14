@@ -201,3 +201,7 @@ import import_reactivation_patch  # noqa: F401,E402
 # Ajuste final do Direct: mantém o fluxo após a resposta de objetivo, reduz a
 # apresentação para o limite do Instagram e melhora o destaque visual das mensagens.
 import instagram_flow_fix_patch  # noqa: F401,E402
+
+# Corrige definitivamente o agendamento: horários de 09h às 20h, remove horários
+# já ocupados e mantém o fluxo ativo após uma tentativa inválida ou concorrente.
+import meeting_scheduler_fix_patch  # noqa: F401,E402
