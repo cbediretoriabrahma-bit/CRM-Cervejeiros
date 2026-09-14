@@ -194,3 +194,6 @@ import lead_management_patch  # noqa: F401,E402
 # Distribuição comercial: alterna novos leads entre Beto Carvalho e Anderson Holanda
 # e permite ao administrador trocar manualmente o responsável do atendimento.
 import lead_assignment_patch  # noqa: F401,E402
+
+# Importação de contatos antigos por Excel/CSV para reativação comercial.
+import import_reactivation_patch  # noqa: F401,E402
