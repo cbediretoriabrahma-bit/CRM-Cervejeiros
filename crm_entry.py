@@ -17,6 +17,9 @@ import sitecustomize  # noqa: F401
 # separadas e espaçamento adequado para leitura no WhatsApp/Instagram.
 import reply_format_patch  # noqa: F401
 
+# Aplica por último o fluxo com vídeo e escolhas interativas.
+import flow_media_patch  # noqa: F401
+
 crm = patched.crm
 app = patched.app
 
