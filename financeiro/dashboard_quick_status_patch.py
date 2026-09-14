@@ -1,3 +1,4 @@
+from flask import jsonify
 import dashboard_quick_edit_patch as quick
 
 app = quick.app
@@ -10,7 +11,7 @@ login_required = quick.login_required
 @login_required
 def quick_edit_status(account_id):
     account = Payable.query.get_or_404(account_id)
-    return core.jsonify({
+    return jsonify({
         'id': account.id,
         'category': account.category or '',
         'dre_class': quick.dre_class_for(account.id),
