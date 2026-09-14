@@ -197,3 +197,7 @@ import lead_assignment_patch  # noqa: F401,E402
 
 # Importação de contatos antigos por Excel/CSV para reativação comercial.
 import import_reactivation_patch  # noqa: F401,E402
+
+# Ajuste final do Direct: mantém o fluxo após a resposta de objetivo, reduz a
+# apresentação para o limite do Instagram e melhora o destaque visual das mensagens.
+import instagram_flow_fix_patch  # noqa: F401,E402
