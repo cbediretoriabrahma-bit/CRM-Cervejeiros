@@ -190,3 +190,7 @@ import flow_resilience_patch  # noqa: F401,E402
 
 # Gestão de leads arquivados/excluídos fica isolada do fluxo de respostas automáticas.
 import lead_management_patch  # noqa: F401,E402
+
+# Distribuição comercial: alterna novos leads entre Beto Carvalho e Anderson Holanda
+# e permite ao administrador trocar manualmente o responsável do atendimento.
+import lead_assignment_patch  # noqa: F401,E402
