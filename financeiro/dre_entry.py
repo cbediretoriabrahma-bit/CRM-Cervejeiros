@@ -10,3 +10,7 @@ if _current_export is not None:
 # Permite selecionar várias unidades ao mesmo tempo no Painel, DRE e Saúde Financeira.
 # Este patch altera apenas filtros e consultas; não modifica nem apaga lançamentos existentes.
 import multi_store_filter_patch  # noqa: F401,E402
+
+# Classificações detalhadas do DRE e separação das despesas pessoais.
+# Importado por último para prevalecer sobre os agrupamentos antigos.
+import dre_categories_patch  # noqa: F401,E402
