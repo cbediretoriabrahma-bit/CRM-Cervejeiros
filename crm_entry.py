@@ -13,6 +13,10 @@ import patched_app as patched
 # WhatsApp podia continuar respondendo com as perguntas antigas de patched_app.py.
 import sitecustomize  # noqa: F401
 
+# Padroniza a apresentação das respostas: pergunta em bloco, opções em linhas
+# separadas e espaçamento adequado para leitura no WhatsApp/Instagram.
+import reply_format_patch  # noqa: F401
+
 crm = patched.crm
 app = patched.app
 
