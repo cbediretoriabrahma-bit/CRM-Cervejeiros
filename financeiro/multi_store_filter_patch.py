@@ -59,6 +59,20 @@ def _dashboard_multi_store():
     expense_month = sum(p.amount or 0 for p in pq.all())
     result_month = revenue_month - expense_month
 
+    # Indicadores gerenciais do DRE para o mesmo mês e para as mesmas unidades do painel.
+    # O CMV usa a classificação já existente no DRE, sem alterar lançamentos financeiros.
+    if selected_stores:
+        dre_rows = [detailed.compute_detailed_dre(month_raw, store) for store in selected_stores]
+        cmv_month = sum(row.get("cmv", 0) or 0 for row in dre_rows)
+    else:
+        consolidated_dre = detailed.compute_detailed_dre(month_raw, "")
+        cmv_month = consolidated_dre.get("cmv", 0) or 0
+    gross_profit_month = revenue_month - cmv_month
+    cmv_pct = (cmv_month / revenue_month * 100) if revenue_month else 0
+    gross_margin_pct = (gross_profit_month / revenue_month * 100) if revenue_month else 0
+    net_profit_month = result_month
+    net_margin_pct = (net_profit_month / revenue_month * 100) if revenue_month else 0
+
     stores = base.managed_stores(active_only=False)
     visible_stores = selected_stores or stores
     unit_rows = []
@@ -74,7 +88,9 @@ def _dashboard_multi_store():
         selected_stores=selected_stores, stores=stores, search=search, date_from=date_from_raw,
         date_to=date_to_raw, today=date.today(), month=month_start.strftime("%Y-%m"),
         revenue_month=revenue_month, expense_month=expense_month, result_month=result_month,
-        unit_rows=unit_rows,
+        cmv_month=cmv_month, cmv_pct=cmv_pct, gross_profit_month=gross_profit_month,
+        gross_margin_pct=gross_margin_pct, net_profit_month=net_profit_month,
+        net_margin_pct=net_margin_pct, unit_rows=unit_rows,
     )
 
 
