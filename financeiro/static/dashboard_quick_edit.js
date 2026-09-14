@@ -67,14 +67,13 @@ document.addEventListener('DOMContentLoaded',()=>{
     buttons.category.classList.toggle('done',categoryDone);buttons.category.classList.toggle('pending',!categoryDone);
     buttons.dre.classList.toggle('done',dreDone);buttons.dre.classList.toggle('pending',!dreDone);
 
-    // Recorrência é sempre um estado válido: recorrente ou não recorrente.
-    // Assim, contas que não precisam repetir também aparecem como conferidas em verde.
-    buttons.recurring.classList.add('done');buttons.recurring.classList.remove('pending');
-    buttons.recurring.textContent=data.recurring?'Recorrente':'Não recorrente';
+    // Recorrência é apenas um comando de gestão e não recebe sinalização verde.
+    buttons.recurring.classList.remove('done','pending');
+    buttons.recurring.textContent='Recorrência';
 
     buttons.category.title=categoryDone?`Categoria definida: ${data.category}`:'Categoria ainda não definida';
     buttons.dre.title=dreDone?`DRE: ${dreGroups[data.dre_class]||data.dre_class}`:'DRE ainda não classificado';
-    buttons.recurring.title=data.recurring?'Conta recorrente ativa':'Conta definida como não recorrente';
+    buttons.recurring.title=data.recurring?'Conta recorrente ativa':'Conta não recorrente';
   }
 
   async function openEditor(id,kind,buttons){
