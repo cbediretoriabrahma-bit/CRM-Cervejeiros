@@ -180,3 +180,6 @@ def lead_second_meeting(lead_id):
         lead=lead,
         options=[(slot.isoformat(), _format_slot(slot)) for slot in options],
     )
+
+# Carrega por último a versão final do fluxo de qualificação, apresentação e reunião.
+import final_qualification_patch  # noqa: F401,E402
