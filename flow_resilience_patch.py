@@ -3,11 +3,15 @@
 - Permite respostas iguais em perguntas consecutivas sem tratá-las como duplicadas.
 - Interpreta corretamente os textos dos botões de reunião, inclusive quando o
   usuário digita a resposta em vez de tocar no botão.
+- Garante a ordem visual após o estado: primeiro o vídeo e só depois a próxima
+  pergunta de qualificação no WhatsApp.
 """
 
+import time
 import unicodedata
 
 import final_qualification_patch as fq
+import flow_media_patch as fm
 import patched_app as p
 
 
@@ -80,3 +84,20 @@ def _apply_answer_resilient(lead, text, inbound_count, channel):
 
 
 p._apply_answer_by_count = _apply_answer_resilient
+
+
+# A Meta pode entregar duas mensagens enviadas quase juntas fora da ordem visual
+# esperada no aparelho. O webhook já envia o vídeo primeiro; aqui damos um pequeno
+# intervalo somente depois de a API confirmar o envio do vídeo. Assim, após o lead
+# responder o estado, o vídeo aparece antes da pergunta "Agora vamos entender...".
+_original_send_whatsapp_video = fm._send_whatsapp_video
+
+
+def _send_whatsapp_video_in_order(phone):
+    ok, detail = _original_send_whatsapp_video(phone)
+    if ok:
+        time.sleep(2.0)
+    return ok, detail
+
+
+fm._send_whatsapp_video = _send_whatsapp_video_in_order
