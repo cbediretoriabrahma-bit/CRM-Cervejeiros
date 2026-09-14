@@ -65,11 +65,16 @@ document.addEventListener('DOMContentLoaded',()=>{
   const recurringSelect=backdrop.querySelector('#qe-recurring-select');
   const form=backdrop.querySelector('#qe-combined');
   const saveBtn=backdrop.querySelector('#qe-save-btn');
+  const buttonMap=new Map();
+  const statusCache=new Map();
 
   async function loadStatus(id){
+    if(statusCache.has(String(id))) return statusCache.get(String(id));
     const response=await fetch(`/conta/${id}/edicao-rapida-status`,{credentials:'same-origin'});
     if(!response.ok) throw new Error('status');
-    return await response.json();
+    const data=await response.json();
+    statusCache.set(String(id),data);
+    return data;
   }
 
   function applyButtonState(button,data){
@@ -131,6 +136,20 @@ document.addEventListener('DOMContentLoaded',()=>{
     button.type='button';button.className='btn small quick-action-btn quick-combined-btn pending';button.textContent='Categoria / Recorrência';
     button.addEventListener('click',()=>openEditor(id,button));
     actionWrap.appendChild(button);
-    loadStatus(id).then(data=>applyButtonState(button,data)).catch(()=>{});
+    buttonMap.set(String(id),button);
   });
+
+  const ids=[...buttonMap.keys()];
+  if(ids.length){
+    fetch(`/contas/edicao-rapida-status?ids=${encodeURIComponent(ids.join(','))}`,{credentials:'same-origin'})
+      .then(r=>r.ok?r.json():Promise.reject())
+      .then(data=>{
+        Object.entries(data).forEach(([id,status])=>{
+          statusCache.set(String(id),status);
+          const button=buttonMap.get(String(id));
+          if(button) applyButtonState(button,status);
+        });
+      })
+      .catch(()=>{});
+  }
 });
