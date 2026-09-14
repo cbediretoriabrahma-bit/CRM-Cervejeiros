@@ -64,13 +64,17 @@ document.addEventListener('DOMContentLoaded',()=>{
   function applyButtonState(buttons,data){
     const categoryDone=!!(data.category && data.category.trim() && data.category.trim().toLowerCase()!=='outros');
     const dreDone=!!(data.dre_class && data.dre_class!=='nao_classificado');
-    const recurringDone=!!data.recurring;
     buttons.category.classList.toggle('done',categoryDone);buttons.category.classList.toggle('pending',!categoryDone);
     buttons.dre.classList.toggle('done',dreDone);buttons.dre.classList.toggle('pending',!dreDone);
-    buttons.recurring.classList.toggle('done',recurringDone);buttons.recurring.classList.toggle('pending',!recurringDone);
+
+    // Recorrência é sempre um estado válido: recorrente ou não recorrente.
+    // Assim, contas que não precisam repetir também aparecem como conferidas em verde.
+    buttons.recurring.classList.add('done');buttons.recurring.classList.remove('pending');
+    buttons.recurring.textContent=data.recurring?'Recorrente':'Não recorrente';
+
     buttons.category.title=categoryDone?`Categoria definida: ${data.category}`:'Categoria ainda não definida';
     buttons.dre.title=dreDone?`DRE: ${dreGroups[data.dre_class]||data.dre_class}`:'DRE ainda não classificado';
-    buttons.recurring.title=recurringDone?'Conta recorrente ativa':'Conta não recorrente';
+    buttons.recurring.title=data.recurring?'Conta recorrente ativa':'Conta definida como não recorrente';
   }
 
   async function openEditor(id,kind,buttons){
@@ -92,7 +96,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       backdrop.querySelector('#qe-recurring').action=`/conta/${id}/recorrencia-rapida`;
       const text=backdrop.querySelector('#qe-recurring-text'),btn=backdrop.querySelector('#qe-recurring-btn');
       if(data.recurring){text.innerHTML='<span class="qe-status qe-on">RECORRENTE</span> Esta conta gera os próximos vencimentos automaticamente.';btn.textContent='Desativar recorrência';btn.className='btn small';}
-      else{text.innerHTML='<span class="qe-status qe-off">NÃO RECORRENTE</span> Você pode transformar esta conta em recorrente.';btn.textContent='Tornar recorrente';btn.className='btn primary small';}
+      else{text.innerHTML='<span class="qe-status qe-off">NÃO RECORRENTE</span> Esta conta não gera novos vencimentos automaticamente.';btn.textContent='Tornar recorrente';btn.className='btn primary small';}
     }
     backdrop.classList.add('open');
   }
@@ -105,7 +109,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     const categoryBtn=document.createElement('button');categoryBtn.type='button';categoryBtn.className='btn small quick-action-btn quick-category-btn pending';categoryBtn.textContent='Categoria';
     const dreBtn=document.createElement('button');dreBtn.type='button';dreBtn.className='btn small quick-action-btn quick-dre-btn pending';dreBtn.textContent='DRE';
-    const recurringBtn=document.createElement('button');recurringBtn.type='button';recurringBtn.className='btn small quick-action-btn quick-recurring-btn pending';recurringBtn.textContent='Recorrente';
+    const recurringBtn=document.createElement('button');recurringBtn.type='button';recurringBtn.className='btn small quick-action-btn quick-recurring-btn';recurringBtn.textContent='Recorrência';
     const buttons={category:categoryBtn,dre:dreBtn,recurring:recurringBtn};
     categoryBtn.addEventListener('click',()=>openEditor(id,'category',buttons));
     dreBtn.addEventListener('click',()=>openEditor(id,'dre',buttons));
