@@ -16,3 +16,4 @@ import dre_categories_patch  # noqa: F401,E402
 
 # Edição rápida diretamente na lista de contas do painel.
 import dashboard_quick_edit_patch  # noqa: F401,E402
+import dashboard_quick_status_patch  # noqa: F401,E402
