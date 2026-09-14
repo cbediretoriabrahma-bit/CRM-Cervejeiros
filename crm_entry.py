@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,16 @@ import sitecustomize  # noqa: F401
 # Padroniza a apresentação das respostas: pergunta em bloco, opções em linhas
 # separadas e espaçamento adequado para leitura no WhatsApp/Instagram.
 import reply_format_patch  # noqa: F401
+
+# Usa automaticamente o vídeo hospedado na pasta /static do próprio CRM.
+# No Render, RENDER_EXTERNAL_URL é fornecida ao serviço web. A variável
+# QUALIFICATION_VIDEO_URL continua podendo sobrescrever esta URL manualmente.
+if not os.getenv("QUALIFICATION_VIDEO_URL"):
+    render_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if render_url:
+        os.environ["QUALIFICATION_VIDEO_URL"] = (
+            f"{render_url}/static/qualificacao_cervejeiros_web.mp4"
+        )
 
 # Aplica por último o fluxo com vídeo e escolhas interativas.
 import flow_media_patch  # noqa: F401
