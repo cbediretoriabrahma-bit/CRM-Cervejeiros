@@ -12,9 +12,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     'Impostos sobre vendas':['Impostos: Simples Nacional','Impostos: ICMS','Impostos: ISS','Impostos: PIS/COFINS','Impostos: Outros impostos sobre vendas'],
     'Despesas pessoais':['Despesa pessoal: Mercado','Despesa pessoal: Farmácia','Despesa pessoal: Passeio','Despesa pessoal: Viagens','Despesa pessoal: Escola','Despesa pessoal: Pet Shop','Despesa pessoal: Empregada','Despesa pessoal: Compra na loja','Despesa pessoal: Saúde','Despesa pessoal: Unimed','Despesa pessoal: Dentista','Despesa pessoal: Parcelamento de imposto','Despesa pessoal: Financiamento','Despesa pessoal: Karina','Despesa pessoal: iFood','Despesa pessoal: Piscina','Despesa pessoal: Cartão de crédito','Despesa pessoal: Combustível','Despesa pessoal: Energia elétrica','Despesa pessoal: Água','Despesa pessoal: Condomínio','Despesa pessoal: Telefone','Despesa pessoal: Internet']
   };
-  const dreGroups={
-    'cmv':'CMV','pessoal_empresa':'Despesas com pessoal','ocupacao':'Despesas de ocupação','comercial':'Despesas comerciais','administrativa':'Despesas administrativas','financeira':'Despesas financeiras','impostos':'Impostos sobre vendas','pessoal':'Despesas pessoais — fora do DRE operacional','nao_classificado':'Não classificado'
-  };
 
   const style=document.createElement('style');
   style.textContent=`
@@ -23,37 +20,51 @@ document.addEventListener('DOMContentLoaded',()=>{
     .quick-action-btn.done::before{content:'✓ ';font-weight:900}
     .quick-action-btn.pending{opacity:.92}
     .qe-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.48);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
-    .qe-backdrop.open{display:flex}.qe-modal{background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+    .qe-backdrop.open{display:flex}
+    .qe-modal{background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
     .qe-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.qe-head h3{margin:0}.qe-close{border:0;background:transparent;font-size:28px;cursor:pointer}
-    .qe-card{border:1px solid #ddd;border-radius:10px;padding:14px;margin-top:16px}.qe-card select{width:100%;margin:8px 0 10px}.qe-status{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px}.qe-on{background:#dcfce7;color:#166534}.qe-off{background:#f3f4f6;color:#4b5563}
+    .qe-card{border:1px solid #ddd;border-radius:10px;padding:14px;margin-top:16px}
+    .qe-card label{display:block;font-weight:700;margin-top:10px}
+    .qe-card select{width:100%;margin:6px 0 10px;padding:10px;border:1px solid #d8c6a5;border-radius:8px;background:white}
+    .qe-save-row{margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .qe-note{font-size:12px;color:#6b7280}
   `;
   document.head.appendChild(style);
 
   const backdrop=document.createElement('div');
   backdrop.className='qe-backdrop';
   backdrop.innerHTML=`<div class="qe-modal">
-    <div class="qe-head"><div><h3 id="qe-title">Atualização rápida</h3><div id="qe-sub" class="muted"></div></div><button class="qe-close" type="button">×</button></div>
-    <div class="qe-card" id="qe-category-card" style="display:none"><strong>Categoria</strong><form id="qe-category" method="post"><select name="category" id="qe-category-select"></select><button class="btn primary small" type="submit">Salvar categoria</button></form></div>
-    <div class="qe-card" id="qe-dre-card" style="display:none"><strong>Classificação do DRE</strong><form id="qe-dre" method="post"><select name="dre_class" id="qe-dre-select"></select><button class="btn primary small" type="submit">Salvar DRE</button></form></div>
-    <div class="qe-card" id="qe-recurring-card" style="display:none"><strong>Conta recorrente</strong><p id="qe-recurring-text" class="muted"></p><form id="qe-recurring" method="post"><button id="qe-recurring-btn" class="btn small" type="submit"></button></form></div>
+    <div class="qe-head"><div><h3>Categoria / Recorrência</h3><div id="qe-sub" class="muted"></div></div><button class="qe-close" type="button">×</button></div>
+    <div class="qe-card">
+      <form id="qe-combined" method="post">
+        <label for="qe-category-select">Categoria</label>
+        <select name="category" id="qe-category-select"></select>
+        <div class="qe-note">Ao salvar a categoria, a classificação do DRE é atualizada automaticamente.</div>
+        <label for="qe-recurring-select">Recorrência</label>
+        <select name="recurring" id="qe-recurring-select">
+          <option value="no">Não recorrente</option>
+          <option value="yes">Recorrente</option>
+        </select>
+        <div class="qe-save-row"><button id="qe-save-btn" class="btn primary small" type="submit">Salvar categoria e recorrência</button></div>
+      </form>
+    </div>
   </div>`;
   document.body.appendChild(backdrop);
+
   const close=()=>backdrop.classList.remove('open');
   backdrop.querySelector('.qe-close').addEventListener('click',close);
   backdrop.addEventListener('click',e=>{if(e.target===backdrop) close();});
 
   const categorySelect=backdrop.querySelector('#qe-category-select');
-  Object.entries(categoryGroups).forEach(([label,items])=>{const g=document.createElement('optgroup');g.label=label;items.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v.replace(/^[^:]+:\s*/,'');g.appendChild(o)});categorySelect.appendChild(g)});
+  Object.entries(categoryGroups).forEach(([label,items])=>{
+    const g=document.createElement('optgroup');g.label=label;
+    items.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v.replace(/^[^:]+:\s*/,'');g.appendChild(o)});
+    categorySelect.appendChild(g);
+  });
   const other=document.createElement('option');other.value='Outros';other.textContent='Outros';categorySelect.appendChild(other);
-  const dreSelect=backdrop.querySelector('#qe-dre-select');
-  Object.entries(dreGroups).forEach(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;dreSelect.appendChild(o)});
-
-  function setVisible(kind){
-    backdrop.querySelector('#qe-category-card').style.display=kind==='category'?'block':'none';
-    backdrop.querySelector('#qe-dre-card').style.display=kind==='dre'?'block':'none';
-    backdrop.querySelector('#qe-recurring-card').style.display=kind==='recurring'?'block':'none';
-    backdrop.querySelector('#qe-title').textContent=kind==='category'?'Alterar categoria':kind==='dre'?'Classificar no DRE':'Conta recorrente';
-  }
+  const recurringSelect=backdrop.querySelector('#qe-recurring-select');
+  const form=backdrop.querySelector('#qe-combined');
+  const saveBtn=backdrop.querySelector('#qe-save-btn');
 
   async function loadStatus(id){
     const response=await fetch(`/conta/${id}/edicao-rapida-status`,{credentials:'same-origin'});
@@ -61,60 +72,65 @@ document.addEventListener('DOMContentLoaded',()=>{
     return await response.json();
   }
 
-  function applyButtonState(buttons,data){
+  function applyButtonState(button,data){
     const categoryDone=!!(data.category && data.category.trim() && data.category.trim().toLowerCase()!=='outros');
-    const dreDone=!!(data.dre_class && data.dre_class!=='nao_classificado');
-    buttons.category.classList.toggle('done',categoryDone);buttons.category.classList.toggle('pending',!categoryDone);
-    buttons.dre.classList.toggle('done',dreDone);buttons.dre.classList.toggle('pending',!dreDone);
-
-    // Recorrência é apenas um comando de gestão e não recebe sinalização verde.
-    buttons.recurring.classList.remove('done','pending');
-    buttons.recurring.textContent='Recorrência';
-
-    buttons.category.title=categoryDone?`Categoria definida: ${data.category}`:'Categoria ainda não definida';
-    buttons.dre.title=dreDone?`DRE: ${dreGroups[data.dre_class]||data.dre_class}`:'DRE ainda não classificado';
-    buttons.recurring.title=data.recurring?'Conta recorrente ativa':'Conta não recorrente';
+    button.classList.toggle('done',categoryDone);
+    button.classList.toggle('pending',!categoryDone);
+    button.title=categoryDone?`Categoria definida: ${data.category}. Recorrência: ${data.recurring?'Sim':'Não'}`:'Categoria ainda não definida';
   }
 
-  async function openEditor(id,kind,buttons){
+  async function openEditor(id,button){
     let data;
     try{data=await loadStatus(id);}catch(e){alert('Não foi possível carregar os dados da conta.');return;}
-    applyButtonState(buttons,data);
+    applyButtonState(button,data);
     backdrop.querySelector('#qe-sub').textContent=`${data.supplier||''} • ${data.description||''}`;
-    setVisible(kind);
-    if(kind==='category'){
-      if([...categorySelect.options].some(o=>o.value===data.category)) categorySelect.value=data.category;
-      else {const custom=document.createElement('option');custom.value=data.category;custom.textContent=data.category||'Sem categoria';categorySelect.insertBefore(custom,categorySelect.firstChild);categorySelect.value=data.category;}
-      backdrop.querySelector('#qe-category').action=`/conta/${id}/categoria-rapida`;
+
+    if([...categorySelect.options].some(o=>o.value===data.category)) categorySelect.value=data.category;
+    else {
+      const custom=document.createElement('option');custom.value=data.category;custom.textContent=data.category||'Sem categoria';
+      categorySelect.insertBefore(custom,categorySelect.firstChild);categorySelect.value=data.category;
     }
-    if(kind==='dre'){
-      dreSelect.value=data.dre_class||'nao_classificado';
-      backdrop.querySelector('#qe-dre').action=`/conta/${id}/dre-rapido`;
-    }
-    if(kind==='recurring'){
-      backdrop.querySelector('#qe-recurring').action=`/conta/${id}/recorrencia-rapida`;
-      const text=backdrop.querySelector('#qe-recurring-text'),btn=backdrop.querySelector('#qe-recurring-btn');
-      if(data.recurring){text.innerHTML='<span class="qe-status qe-on">RECORRENTE</span> Esta conta gera os próximos vencimentos automaticamente.';btn.textContent='Desativar recorrência';btn.className='btn small';}
-      else{text.innerHTML='<span class="qe-status qe-off">NÃO RECORRENTE</span> Esta conta não gera novos vencimentos automaticamente.';btn.textContent='Tornar recorrente';btn.className='btn primary small';}
-    }
+    recurringSelect.value=data.recurring?'yes':'no';
+    form.dataset.accountId=id;
+    form.dataset.currentRecurring=data.recurring?'yes':'no';
     backdrop.classList.add('open');
   }
+
+  form.addEventListener('submit',async ev=>{
+    ev.preventDefault();
+    const id=form.dataset.accountId;
+    if(!id) return;
+    const desiredRecurring=recurringSelect.value;
+    const currentRecurring=form.dataset.currentRecurring;
+    saveBtn.disabled=true;saveBtn.textContent='Salvando...';
+    try{
+      const categoryData=new FormData();
+      categoryData.append('category',categorySelect.value);
+      const categoryResponse=await fetch(`/conta/${id}/categoria-rapida`,{method:'POST',body:categoryData,credentials:'same-origin'});
+      if(!categoryResponse.ok) throw new Error('categoria');
+
+      if(desiredRecurring!==currentRecurring){
+        const recurringResponse=await fetch(`/conta/${id}/recorrencia-rapida`,{method:'POST',body:new FormData(),credentials:'same-origin'});
+        if(!recurringResponse.ok) throw new Error('recorrencia');
+      }
+      window.location.reload();
+    }catch(e){
+      saveBtn.disabled=false;saveBtn.textContent='Salvar categoria e recorrência';
+      alert('Não foi possível salvar as alterações. Tente novamente.');
+    }
+  });
 
   accountLinks.forEach(link=>{
     const m=(link.getAttribute('href')||'').match(/\/conta\/(\d+)/); if(!m) return;
     const id=m[1];
     const actionWrap=link.closest('td')?.querySelector('div') || link.parentElement;
-    if(!actionWrap || actionWrap.querySelector('.quick-category-btn')) return;
+    if(!actionWrap || actionWrap.querySelector('.quick-combined-btn')) return;
 
-    const categoryBtn=document.createElement('button');categoryBtn.type='button';categoryBtn.className='btn small quick-action-btn quick-category-btn pending';categoryBtn.textContent='Categoria';
-    const dreBtn=document.createElement('button');dreBtn.type='button';dreBtn.className='btn small quick-action-btn quick-dre-btn pending';dreBtn.textContent='DRE';
-    const recurringBtn=document.createElement('button');recurringBtn.type='button';recurringBtn.className='btn small quick-action-btn quick-recurring-btn';recurringBtn.textContent='Recorrência';
-    const buttons={category:categoryBtn,dre:dreBtn,recurring:recurringBtn};
-    categoryBtn.addEventListener('click',()=>openEditor(id,'category',buttons));
-    dreBtn.addEventListener('click',()=>openEditor(id,'dre',buttons));
-    recurringBtn.addEventListener('click',()=>openEditor(id,'recurring',buttons));
-    actionWrap.appendChild(categoryBtn);actionWrap.appendChild(dreBtn);actionWrap.appendChild(recurringBtn);
-
-    loadStatus(id).then(data=>applyButtonState(buttons,data)).catch(()=>{});
+    actionWrap.querySelectorAll('.quick-category-btn,.quick-dre-btn,.quick-recurring-btn').forEach(el=>el.remove());
+    const button=document.createElement('button');
+    button.type='button';button.className='btn small quick-action-btn quick-combined-btn pending';button.textContent='Categoria / Recorrência';
+    button.addEventListener('click',()=>openEditor(id,button));
+    actionWrap.appendChild(button);
+    loadStatus(id).then(data=>applyButtonState(button,data)).catch(()=>{});
   });
 });
