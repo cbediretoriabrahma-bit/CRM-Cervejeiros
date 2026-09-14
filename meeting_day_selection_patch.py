@@ -3,13 +3,13 @@
 Fluxo:
 1. Lead aceita a reunião.
 2. CRM oferece próximos dias úteis (segunda a sexta) que tenham pelo menos
-   três horários realmente livres.
+   dois horários livres pela manhã e dois pela tarde.
 3. Lead escolhe o dia.
-4. CRM oferece exatamente três horários livres entre 09:00 e 20:00.
+4. CRM oferece 4 horários: 2 pela manhã e 2 pela tarde, entre 09:00 e 20:00.
 5. Antes de confirmar, a disponibilidade é conferida novamente.
 
 Horários ocupados nunca são oferecidos. Se um horário for ocupado entre a
-exibição e o clique, o CRM atualiza as opções sem travar a conversa.
+exibição e a escolha, o CRM atualiza as opções sem travar a conversa.
 """
 import re
 from datetime import datetime, timedelta
@@ -44,8 +44,18 @@ def _free_slots_for_day(lead, day):
     return slots
 
 
+def _balanced_slots_for_day(lead, day):
+    """Seleciona 2 horários de manhã e 2 à tarde, todos realmente livres."""
+    free = _free_slots_for_day(lead, day)
+    morning = [slot for slot in free if 9 <= slot.hour < 12]
+    afternoon = [slot for slot in free if 13 <= slot.hour <= 20]
+    if len(morning) < 2 or len(afternoon) < 2:
+        return []
+    return morning[:2] + afternoon[:2]
+
+
 def _available_days(lead, refresh=False):
-    """Retorna até 5 dias úteis com pelo menos 3 horários livres."""
+    """Retorna até 5 dias úteis com 2 horários de manhã e 2 à tarde livres."""
     if not refresh:
         stored = []
         for i in range(1, 6):
@@ -57,7 +67,7 @@ def _available_days(lead, refresh=False):
             except Exception:
                 stored = []
                 break
-            if len(_free_slots_for_day(lead, day)) < 3:
+            if len(_balanced_slots_for_day(lead, day)) < 4:
                 stored = []
                 break
             stored.append(day)
@@ -70,7 +80,7 @@ def _available_days(lead, refresh=False):
         day = (now + timedelta(days=add_day)).date()
         if day.weekday() >= 5:
             continue
-        if len(_free_slots_for_day(lead, day)) >= 3:
+        if len(_balanced_slots_for_day(lead, day)) == 4:
             days.append(day)
         if len(days) == 5:
             break
@@ -87,14 +97,12 @@ def _select_day(lead, text):
         return None
     raw = _norm(text)
 
-    # Payload numérico do WhatsApp/Instagram.
     m = re.fullmatch(r"[1-5]", raw)
     if m:
         idx = int(raw) - 1
         if idx < len(days):
             return days[idx]
 
-    # Texto visível do botão/lista.
     for day in days:
         labels = {
             _norm(_format_day(day)),
@@ -108,8 +116,8 @@ def _select_day(lead, text):
 
 
 def _store_time_options(lead, day):
-    slots = _free_slots_for_day(lead, day)[:3]
-    for i in range(1, 4):
+    slots = _balanced_slots_for_day(lead, day)
+    for i in range(1, 5):
         value = slots[i - 1].isoformat() if i <= len(slots) else ""
         sc._set_tag(lead, f"Q_SLOT_{i}", value)
     return slots
@@ -133,7 +141,7 @@ def _find_time(lead, text):
     slots = _store_time_options(lead, day)
     raw = _norm(text)
 
-    m = re.fullmatch(r"[123]", raw)
+    m = re.fullmatch(r"[1-4]", raw)
     if m:
         idx = int(raw) - 1
         return slots[idx] if idx < len(slots) else None
@@ -157,7 +165,6 @@ def _schedule_selected_time(lead, text):
     if slot is None:
         return False
 
-    # Confere de novo imediatamente antes de gravar.
     if not sc._slot_is_free(slot, lead.owner_id):
         day = _selected_day(lead)
         if day:
@@ -187,7 +194,7 @@ def _day_prompt(lead):
     days = _available_days(lead, refresh=True)
     if not days:
         return (
-            "No momento não encontrei dias úteis com três horários livres. "
+            "No momento não encontrei dias úteis com disponibilidade de manhã e à tarde. "
             "Nosso consultor entrará em contato para combinar a reunião."
         )
     options = [
@@ -208,20 +215,23 @@ def _time_prompt(lead, refresh=True):
         return _day_prompt(lead)
 
     slots = _store_time_options(lead, day)
-    if len(slots) < 3:
-        # O dia perdeu disponibilidade; volta para a seleção de dia.
+    if len(slots) < 4:
         sc._set_tag(lead, "Q_MEETING_DAY", "")
         return (
-            "⚠️ *Esse dia ficou sem três horários livres.*\n\n" +
+            "⚠️ *Esse dia não possui mais duas opções pela manhã e duas à tarde.*\n\n" +
             _day_prompt(lead)
         )
 
-    return fm._buttons_marker(
-        f"⏰ *Perfeito! Para {_format_day(day)}, escolha um dos 3 horários disponíveis:*",
+    return fm._list_marker(
+        f"⏰ *Perfeito! Para {_format_day(day)}, escolha um horário:*\n\n"
+        "☀️ *Manhã:* 2 opções\n"
+        "🌇 *Tarde:* 2 opções",
+        "Escolher horário",
         [
-            {"id": "1", "title": slots[0].strftime("%H:%M")},
-            {"id": "2", "title": slots[1].strftime("%H:%M")},
-            {"id": "3", "title": slots[2].strftime("%H:%M")},
+            {"id": "1", "title": f"Manhã • {slots[0].strftime('%H:%M')}"},
+            {"id": "2", "title": f"Manhã • {slots[1].strftime('%H:%M')}"},
+            {"id": "3", "title": f"Tarde • {slots[2].strftime('%H:%M')}"},
+            {"id": "4", "title": f"Tarde • {slots[3].strftime('%H:%M')}"},
         ],
     )
 
@@ -244,8 +254,6 @@ _previous_apply = p._apply_answer_by_count
 
 
 def _apply_day_time(lead, text, inbound_count, channel):
-    # A mensagem em que o lead aceita a reunião ainda precisa passar pelo fluxo
-    # anterior para definir meeting_interest='Sim'.
     if lead.meeting_interest != "Sim":
         return _previous_apply(lead, text, inbound_count, channel)
 
@@ -303,11 +311,9 @@ def _state_reply(lead, channel):
         lead_id=lead.id, channel=channel, direction="in"
     ).count()
 
-    # Assim que aceita a reunião, primeiro escolhe o dia.
     if count >= 8 and not _selected_day(lead):
         return _day_prompt(lead)
 
-    # Depois de escolher o dia, sempre oferece 3 horários livres daquele dia.
     if count >= 9 and _selected_day(lead):
         return _time_prompt(lead)
 
