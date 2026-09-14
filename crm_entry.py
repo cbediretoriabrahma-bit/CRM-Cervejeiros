@@ -205,3 +205,7 @@ import instagram_flow_fix_patch  # noqa: F401,E402
 # Corrige definitivamente o agendamento: horários de 09h às 20h, remove horários
 # já ocupados e mantém o fluxo ativo após uma tentativa inválida ou concorrente.
 import meeting_scheduler_fix_patch  # noqa: F401,E402
+
+# Fluxo final de agendamento em duas etapas: primeiro o lead escolhe o dia útil
+# e depois recebe sempre três horários realmente livres para aquele dia.
+import meeting_day_selection_patch  # noqa: F401,E402
