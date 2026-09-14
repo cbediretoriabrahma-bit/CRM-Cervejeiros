@@ -207,5 +207,9 @@ import instagram_flow_fix_patch  # noqa: F401,E402
 import meeting_scheduler_fix_patch  # noqa: F401,E402
 
 # Fluxo final de agendamento em duas etapas: primeiro o lead escolhe o dia útil
-# e depois recebe sempre três horários realmente livres para aquele dia.
+# e depois recebe 2 horários pela manhã e 2 à tarde, todos realmente livres.
 import meeting_day_selection_patch  # noqa: F401,E402
+
+# Hotfix final: reconhece rótulos de horário do Instagram (ex.: Manhã • 10:00)
+# e evita que faixas de investimento sejam interpretadas como número de telefone.
+import instagram_schedule_hotfix  # noqa: F401,E402
