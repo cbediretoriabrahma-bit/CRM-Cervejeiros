@@ -107,3 +107,7 @@ def _qualification(lead, channel):
 p._reply_for_instagram = _reply_instagram
 p._reply_for_message = _reply_whatsapp
 fm._qualification_reply = _qualification
+
+# Carrega por último o fluxo de cadastro inicial: Nome, WhatsApp, Cidade e Estado.
+# Ele também desloca as perguntas comerciais sem alterar score ou pipeline.
+import onboarding_contact_patch  # noqa: F401,E402
