@@ -27,13 +27,10 @@ def _find_time_hotfix(lead, text):
     slots = mds._store_time_options(lead, day)
     raw = _norm(text)
 
-    # IDs enviados por botões/listas.
     if re.fullmatch(r"[1-4]", raw):
         idx = int(raw) - 1
         return slots[idx] if idx < len(slots) else None
 
-    # Instagram pode devolver exatamente o título da opção:
-    # "Manhã • 10:00" / "Tarde • 13:00".
     time_match = re.search(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", raw)
     if time_match:
         hour = int(time_match.group(1))
@@ -42,7 +39,6 @@ def _find_time_hotfix(lead, text):
             if slot.hour == hour and slot.minute == minute:
                 return slot
 
-    # Mantém compatibilidade com os formatos anteriores.
     for slot in slots:
         labels = {
             _norm(slot.strftime("%H:%M")),
@@ -59,7 +55,6 @@ def _find_time_hotfix(lead, text):
     return None
 
 
-# _schedule_selected_time consulta _find_time dinamicamente dentro do módulo.
 mds._find_time = _find_time_hotfix
 
 
@@ -86,7 +81,6 @@ def _count(lead, channel):
 
 
 def _reply_instagram(lead):
-    # A 4ª mensagem recebida gera a pergunta de investimento.
     if _count(lead, "Instagram") == 4:
         return _investment_prompt()
     return _prev_instagram(lead)
@@ -108,6 +102,8 @@ p._reply_for_instagram = _reply_instagram
 p._reply_for_message = _reply_whatsapp
 fm._qualification_reply = _qualification
 
-# Carrega por último o fluxo de cadastro inicial: Nome, WhatsApp, Cidade e Estado.
-# Ele também desloca as perguntas comerciais sem alterar score ou pipeline.
+# Carrega por último o fluxo de cadastro inicial e apresentação comercial.
 import onboarding_contact_patch  # noqa: F401,E402
+
+# Substitui o convite final por uma única ação: agendar reunião com o consultor.
+import single_consultant_cta_patch  # noqa: F401,E402
