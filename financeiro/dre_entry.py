@@ -14,9 +14,6 @@ import multi_store_filter_patch  # noqa: F401,E402
 # Classificações detalhadas do DRE e separação das despesas pessoais.
 import dre_categories_patch  # noqa: F401,E402
 
-# Edição rápida diretamente na lista de contas do painel.
-import dashboard_quick_edit_patch  # noqa: F401,E402
-import dashboard_quick_status_patch  # noqa: F401,E402
-
-# Otimizações de desempenho: reduz consultas repetidas e rotinas pesadas a cada requisição.
-import performance_patch  # noqa: F401,E402
+# Os atalhos rápidos de Categoria e Recorrência foram retirados do painel
+# após a classificação inicial das contas, deixando a tela mais leve.
+# As rotas/consultas de edição rápida também deixam de ser carregadas.
