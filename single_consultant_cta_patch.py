@@ -36,3 +36,7 @@ p._reply_for_message = _reply_whatsapp
 p._reply_for_instagram = _reply_instagram
 p._qualification_reply = _qualification
 fm._qualification_reply = _qualification
+
+# Corrige o envio da apresentação longa no WhatsApp dividindo o texto em partes
+# seguras e mantendo os botões na última mensagem.
+import whatsapp_long_message_patch  # noqa: F401,E402
