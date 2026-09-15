@@ -10,10 +10,13 @@ import patched_app as p
 
 crm = p.crm
 
-MAX_BODY = 3000
+# Texto comum do WhatsApp suporta mensagens maiores, mas o corpo de mensagens
+# interativas (botões/listas) precisa ser bem menor. Usamos margem de segurança.
+MAX_TEXT_BODY = 3000
+MAX_INTERACTIVE_BODY = 900
 
 
-def _split_text(text, limit=MAX_BODY):
+def _split_text(text, limit=MAX_TEXT_BODY):
     text = (text or "").strip()
     if len(text) <= limit:
         return [text]
@@ -40,7 +43,11 @@ def _send_whatsapp_rich_safe(phone, message):
 
     if kind in {"buttons", "list"}:
         body = data.get("body", "")
-        chunks = _split_text(body)
+
+        # Para garantir que a ÚLTIMA mensagem interativa seja aceita pela API,
+        # todo o corpo é dividido em blocos de no máximo 900 caracteres.
+        # Assim, o fechamento da apresentação e o botão CONTINUAR sempre chegam.
+        chunks = _split_text(body, MAX_INTERACTIVE_BODY)
 
         for chunk in chunks[:-1]:
             ok, detail = fm._wa_post(phone, {
@@ -88,8 +95,8 @@ def _send_whatsapp_rich_safe(phone, message):
             },
         })
 
-    if isinstance(message, str) and len(message) > MAX_BODY:
-        chunks = _split_text(message)
+    if isinstance(message, str) and len(message) > MAX_TEXT_BODY:
+        chunks = _split_text(message, MAX_TEXT_BODY)
         last_detail = ""
         for chunk in chunks:
             ok, last_detail = fm._wa_post(phone, {
