@@ -17,3 +17,7 @@ import dre_categories_patch  # noqa: F401,E402
 # Os atalhos rápidos de Categoria e Recorrência foram retirados do painel
 # após a classificação inicial das contas, deixando a tela mais leve.
 # As rotas/consultas de edição rápida também deixam de ser carregadas.
+
+# Reativa as otimizações de desempenho do painel.
+# Evita consultas repetidas, carrega pagamentos em lote e reduz o custo da abertura da página.
+import performance_patch  # noqa: F401,E402
