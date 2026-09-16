@@ -1,7 +1,8 @@
 """Relatórios e histórico de reuniões do CRM Cervejeiros.
 
 Adiciona:
-- lista de reuniões agendadas no Dashboard;
+- listas separadas de 1ª e 2ª reunião no Dashboard;
+- prioridade/aviso conforme proximidade da reunião;
 - acesso rápido ao lead e sua qualificação;
 - relatório pós-reunião persistente, com múltiplos registros por cliente;
 - próxima ação e data de retorno;
@@ -36,7 +37,6 @@ class MeetingReport(crm.db.Model):
     user = crm.db.relationship("User")
 
 
-# Exponibiliza o model para outros módulos, se necessário.
 crm.MeetingReport = MeetingReport
 p.MeetingReport = MeetingReport
 
@@ -49,14 +49,57 @@ def _visible_meeting_query():
     return q
 
 
+def _is_second_meeting(task):
+    title = (task.title or "").lower()
+    notes = (task.notes or "").lower()
+    return "2ª" in title or "2a" in title or "segunda" in title or "2ª" in notes or "segunda" in notes
+
+
 def _dashboard_meetings():
     return (
         _visible_meeting_query()
         .filter(crm.Task.status == "Pendente")
         .order_by(crm.Task.due_at.asc())
-        .limit(20)
+        .limit(30)
         .all()
     )
+
+
+def _dashboard_first_meetings():
+    return [t for t in _dashboard_meetings() if not _is_second_meeting(t)]
+
+
+def _dashboard_second_meetings():
+    return [t for t in _dashboard_meetings() if _is_second_meeting(t)]
+
+
+def _local_dt(value):
+    if not value:
+        return None
+    return value.replace(tzinfo=UTC).astimezone(TZ)
+
+
+def _meeting_alert(task):
+    """Retorna rótulo curto e classe visual da prioridade da reunião."""
+    local = _local_dt(task.due_at)
+    if not local:
+        return {"label": "SEM DATA", "level": "normal"}
+
+    now = datetime.now(TZ)
+    seconds = (local - now).total_seconds()
+    today = now.date()
+
+    if seconds < 0:
+        return {"label": "⚠️ ATRASADA", "level": "urgent"}
+    if local.date() == today:
+        if seconds <= 2 * 3600:
+            return {"label": "🚨 EM BREVE", "level": "urgent"}
+        return {"label": "🔴 HOJE", "level": "high"}
+    if (local.date() - today).days == 1:
+        return {"label": "🟠 AMANHÃ", "level": "medium"}
+    if seconds <= 72 * 3600:
+        return {"label": "🟡 PRÓXIMA", "level": "medium"}
+    return {"label": "🟢 AGENDADA", "level": "normal"}
 
 
 def _lead_meetings(lead_id):
@@ -78,8 +121,7 @@ def _lead_meeting_reports(lead_id):
 def _br_datetime(value, include_year=True):
     if not value:
         return "-"
-    # As reuniões automáticas são gravadas como UTC sem timezone.
-    aware = value.replace(tzinfo=UTC).astimezone(TZ)
+    aware = _local_dt(value)
     return aware.strftime("%d/%m/%Y %H:%M" if include_year else "%d/%m %H:%M")
 
 
@@ -87,6 +129,9 @@ def _br_datetime(value, include_year=True):
 def _meeting_report_context():
     return {
         "dashboard_meetings": _dashboard_meetings,
+        "dashboard_first_meetings": _dashboard_first_meetings,
+        "dashboard_second_meetings": _dashboard_second_meetings,
+        "meeting_alert": _meeting_alert,
         "lead_meetings": _lead_meetings,
         "lead_meeting_reports": _lead_meeting_reports,
         "br_datetime": _br_datetime,
@@ -141,18 +186,11 @@ def lead_meeting_report(lead_id):
     if task and request.form.get("mark_done") == "1":
         task.status = "Concluída"
 
-    if next_action:
-        crm.db.session.add(crm.AutomationLog(
-            lead_id=lead.id,
-            action="Relatório de reunião",
-            detail=f"Relatório salvo. Próxima ação: {next_action}.",
-        ))
-    else:
-        crm.db.session.add(crm.AutomationLog(
-            lead_id=lead.id,
-            action="Relatório de reunião",
-            detail="Relatório pós-reunião salvo no histórico do cliente.",
-        ))
+    crm.db.session.add(crm.AutomationLog(
+        lead_id=lead.id,
+        action="Relatório de reunião",
+        detail=(f"Relatório salvo. Próxima ação: {next_action}." if next_action else "Relatório pós-reunião salvo no histórico do cliente."),
+    ))
 
     crm.db.session.commit()
     flash("Relatório da reunião salvo no histórico do cliente.", "success")
