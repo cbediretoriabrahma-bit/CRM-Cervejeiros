@@ -1,5 +1,33 @@
 {% extends "base.html" %}{% block content %}
 <div class="title-row"><div><h1>Agendar 2ª reunião</h1><p>{{lead.name}} · Responsável: <b>{{lead.owner.name if lead.owner else '-'}}</b></p></div><a class="btn" href="{{url_for('lead_detail',lead_id=lead.id)}}">Voltar</a></div>
-<section class="panel"><h2>Horários disponíveis</h2><p>Escolha um dos 3 próximos horários livres na agenda do responsável pelo lead. Cada reunião dura 1 hora.</p>
-{% if options %}<form method="post"><div style="display:grid;gap:12px;margin:18px 0">{% for value,label in options %}<label class="history" style="cursor:pointer"><input type="radio" name="slot" value="{{value}}" required> <b>{{label}}</b></label>{% endfor %}</div><button class="btn primary">Confirmar 2ª reunião</button></form>{% else %}<p class="muted">Não encontramos horários disponíveis nos próximos dias.</p>{% endif %}</section>
+
+<section class="panel">
+{% if not selected_day %}
+<h2>1. Escolha o dia</h2>
+<p>Selecione um dia útil. O sistema mostra apenas dias que ainda possuem horários livres e verifica todas as reuniões já marcadas, tanto 1ª quanto 2ª reunião.</p>
+{% if days %}
+<form method="post">
+<input type="hidden" name="action" value="select_day">
+<div style="display:grid;gap:12px;margin:18px 0">
+{% for value,label in days %}<label class="history" style="cursor:pointer"><input type="radio" name="day" value="{{value}}" required> <b>{{label}}</b></label>{% endfor %}
+</div>
+<button class="btn primary">Ver horários disponíveis</button>
+</form>
+{% else %}<p class="muted">Não encontramos dias úteis com horários disponíveis nos próximos 30 dias.</p>{% endif %}
+{% else %}
+<h2>2. Escolha o horário</h2>
+<p><b>Dia selecionado:</b> {{selected_day_label}}</p>
+<p>Escolha uma das 2 opções disponíveis. Antes de confirmar, o CRM verifica novamente se nenhuma 1ª ou 2ª reunião ocupou esse horário.</p>
+{% if options %}
+<form method="post">
+<input type="hidden" name="action" value="confirm_slot">
+<input type="hidden" name="day" value="{{selected_day}}">
+<div style="display:grid;gap:12px;margin:18px 0">
+{% for value,label in options %}<label class="history" style="cursor:pointer"><input type="radio" name="slot" value="{{value}}" required> <b>{{label}}</b></label>{% endfor %}
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">Confirmar 2ª reunião</button><a class="btn" href="{{url_for('lead_second_meeting',lead_id=lead.id)}}">Escolher outro dia</a></div>
+</form>
+{% else %}<p class="muted">Os horários desse dia acabaram de ser ocupados. Escolha outro dia.</p><a class="btn" href="{{url_for('lead_second_meeting',lead_id=lead.id)}}">Voltar aos dias disponíveis</a>{% endif %}
+{% endif %}
+</section>
 {% endblock %}
