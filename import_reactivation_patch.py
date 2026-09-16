@@ -7,7 +7,7 @@ e usa a distribuicao automatica do CRM.
 import csv
 import io
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, redirect, render_template, request, session, url_for
 
 import patched_app as p
 
@@ -74,9 +74,9 @@ def _pick(row, *keys):
 
 
 def import_leads_reactivation():
-    if not p.session.get("user_id"):
+    if not session.get("user_id"):
         return redirect(url_for("login"))
-    if p.session.get("role") not in ["admin", "manager"]:
+    if session.get("role") not in ["admin", "manager"]:
         flash("Acesso restrito.", "danger")
         return redirect(url_for("dashboard"))
 
