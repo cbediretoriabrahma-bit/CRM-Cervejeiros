@@ -5,6 +5,8 @@
 - Converte trechos marcados com *asteriscos* em caracteres Unicode destacados
   no Instagram, evitando que os asteriscos apareçam literalmente.
 - Destaca CIDADE e ESTADO em maiúsculas.
+- Evita repetir a pergunta de CIDADE quando o cliente já respondeu ao prompt
+  anterior no Direct.
 - Mantém a lógica, score, pipeline e respostas do WhatsApp já existentes.
 """
 import json
@@ -56,11 +58,39 @@ def _instagramize(message):
     return _render_instagram_markup(message)
 
 
+def _instagram_city_already_asked(lead):
+    """Detecta se o CRM já perguntou a cidade antes da resposta atual."""
+    previous = crm.Interaction.query.filter_by(
+        lead_id=lead.id, channel="Instagram", direction="out"
+    ).order_by(crm.Interaction.created_at.desc()).first()
+    text = (previous.message or "") if previous else ""
+    upper = text.upper()
+    return "CIDADE" in upper and ("QUAL" in upper or "PRETENDE OPERAR" in upper)
+
+
+def _latest_instagram_inbound(lead):
+    row = crm.Interaction.query.filter_by(
+        lead_id=lead.id, channel="Instagram", direction="in"
+    ).order_by(crm.Interaction.created_at.desc()).first()
+    return (row.message or "").strip() if row else ""
+
+
 def _styled_reply(lead, channel):
     inbound_count = crm.Interaction.query.filter_by(
         lead_id=lead.id, channel=channel, direction="in"
     ).count()
     first = (lead.name or "Olá").split()[0]
+
+    # Instagram: se a pergunta de cidade já foi enviada e o cliente acabou de
+    # responder (ex.: "Mogi"), registra essa resposta como cidade e segue para
+    # ESTADO em vez de repetir a mesma pergunta.
+    if channel == "Instagram" and inbound_count <= 1 and _instagram_city_already_asked(lead):
+        city = _latest_instagram_inbound(lead)
+        if city:
+            lead.city = city[:120]
+            crm.db.session.commit()
+        reply = "Perfeito! 📍 *Em qual ESTADO fica essa CIDADE?*"
+        return _instagramize(reply)
 
     # Abertura com CIDADE em destaque.
     if inbound_count <= 1:
