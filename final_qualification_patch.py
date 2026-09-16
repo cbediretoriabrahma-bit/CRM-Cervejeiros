@@ -70,8 +70,7 @@ def _auto_stage_final_v2(lead, preserve=True):
         "1ª Reunião Realizada",
         "2ª Reunião Agendada",
         "2ª Reunião Realizada",
-        "Proposta Enviada",
-        "Negociação",
+        "Contrato Enviado",
         "Fechado",
         "Perdido",
     }
@@ -79,9 +78,7 @@ def _auto_stage_final_v2(lead, preserve=True):
         return lead.stage
     if sc._tag_value(lead, "Q_MEETING_SLOT"):
         return "Reunião Agendada"
-    if lead.meeting_interest == "Sim" or lead.score >= 80:
-        return "Prioridade / Reunião"
-    if lead.score >= 60:
+    if lead.meeting_interest == "Sim" or lead.score >= 60:
         return "Lead Quente"
     if lead.score >= 35:
         return "Qualificado"
@@ -284,7 +281,7 @@ def _apply_answer_final_v2(lead, text, inbound_count, channel):
     crm.requalify(lead, preserve=False)
 
     if lead.meeting_interest == "Sim" and lead.stage != "Reunião Agendada":
-        lead.stage = "Prioridade / Reunião"
+        lead.stage = "Lead Quente"
     if sc._tag_value(lead, "Q_MEETING_SLOT"):
         lead.stage = "Reunião Agendada"
 
