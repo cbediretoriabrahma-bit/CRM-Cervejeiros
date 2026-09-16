@@ -213,3 +213,7 @@ import meeting_day_selection_patch  # noqa: F401,E402
 # Hotfix final: reconhece rótulos de horário do Instagram (ex.: Manhã • 10:00)
 # e evita que faixas de investimento sejam interpretadas como número de telefone.
 import instagram_schedule_hotfix  # noqa: F401,E402
+
+# Relatórios de reuniões: lista reuniões no Dashboard e mantém histórico pós-reunião
+# dentro da ficha de cada cliente, sem apagar registros anteriores.
+import meeting_report_patch  # noqa: F401,E402
