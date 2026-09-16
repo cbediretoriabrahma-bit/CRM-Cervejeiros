@@ -13,25 +13,32 @@
       <div><span class="badge {{l.temperature|lower}}">{{l.temperature}}</span><strong>{{l.score}}</strong></div>
     </a>
 
-    {% if l.stage in ['Reunião Agendada','1ª Reunião Realizada','2ª Reunião Agendada','2ª Reunião Realizada','Proposta Enviada','Negociação'] %}
+    {% if l.stage in ['Reunião Agendada','1ª Reunião Realizada','2ª Reunião Agendada','2ª Reunião Realizada','Contrato Enviado'] %}
     <div class="actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
       {% if l.stage == 'Reunião Agendada' %}
       <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="1ª Reunião Realizada"><button class="btn primary" type="submit">1ª reunião realizada</button></form>
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}">Agendar 2ª reunião</a>
-      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Proposta Enviada"><button class="btn" type="submit">Proposta enviada</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Contrato Enviado"><button class="btn" type="submit">Contrato enviado</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Fechado"><button class="btn primary" type="submit">Fechado</button></form>
+
       {% elif l.stage == '1ª Reunião Realizada' %}
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}">Agendar 2ª reunião</a>
-      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Proposta Enviada"><button class="btn primary" type="submit">Proposta enviada</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Contrato Enviado"><button class="btn" type="submit">Contrato enviado</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Fechado"><button class="btn primary" type="submit">Fechado</button></form>
+
       {% elif l.stage == '2ª Reunião Agendada' %}
       <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="2ª Reunião Realizada"><button class="btn primary" type="submit">2ª reunião realizada</button></form>
-      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Proposta Enviada"><button class="btn" type="submit">Proposta enviada</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Contrato Enviado"><button class="btn" type="submit">Contrato enviado</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Fechado"><button class="btn primary" type="submit">Fechado</button></form>
+
       {% elif l.stage == '2ª Reunião Realizada' %}
-      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Proposta Enviada"><button class="btn primary" type="submit">Proposta enviada</button></form>
-      {% elif l.stage == 'Proposta Enviada' %}
-      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Negociação"><button class="btn primary" type="submit">Mover para negociação</button></form>
-      {% elif l.stage == 'Negociação' %}
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Contrato Enviado"><button class="btn" type="submit">Contrato enviado</button></form>
+      <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Fechado"><button class="btn primary" type="submit">Fechado</button></form>
+
+      {% elif l.stage == 'Contrato Enviado' %}
       <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Fechado"><button class="btn primary" type="submit">Fechado</button></form>
       {% endif %}
+
       {% if l.stage not in ['Fechado','Perdido'] %}
       <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}"><input type="hidden" name="stage" value="Perdido"><button class="btn" type="submit">Perdido</button></form>
       {% endif %}
