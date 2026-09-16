@@ -1,14 +1,16 @@
 """Hotfix de resposta automática do Instagram.
 
-Garante que o webhook do Direct aceite texto e quick replies, grave a resposta,
-aplique o mesmo fluxo de qualificação usado pelo CRM e envie a próxima pergunta.
-Também preserva a chave técnica do Instagram quando o lead informa o WhatsApp,
-para que a conversa não reinicie depois da pergunta de cidade.
+Garante que o webhook do Direct aceite texto e quick replies, preserve a conversa
+mesmo após o lead informar o WhatsApp, aplique o mesmo fluxo do WhatsApp e envie
+mensagens longas (como a apresentação comercial) em partes seguras.
 """
+import json
 import os
 from datetime import datetime
 from flask import request
 
+import flow_media_patch as fm
+import instagram_flow_fix_patch as igf
 import patched_app as p
 import sitecustomize as sc
 
@@ -16,14 +18,11 @@ crm = p.crm
 
 
 def _extract_text(message):
-    text = str((message or {}).get("text") or "").strip()
-    if text:
-        return text
     quick = (message or {}).get("quick_reply") or {}
     payload = str(quick.get("payload") or "").strip()
     if payload:
         return payload
-    return ""
+    return str((message or {}).get("text") or "").strip()
 
 
 def _instagram_key(page_id, sender_id):
@@ -46,11 +45,7 @@ def _restore_instagram_identity(lead, page_id, sender_id, informed_whatsapp=""):
 
 
 def _recover_previous_instagram_lead(page_id, sender_id, account, current=None):
-    """Recupera conversa que tenha sido quebrada quando o WhatsApp substituiu a chave IG.
-
-    Isso corrige conversas já iniciadas antes deste hotfix. A busca só considera
-    a mesma página, o mesmo nome de perfil e um lead com histórico maior de Direct.
-    """
+    """Recupera conversa quebrada anteriormente quando o WhatsApp substituiu a chave IG."""
     profile_name = sc._profile_name(sender_id, account["token"])
     if not profile_name:
         return current
@@ -77,6 +72,63 @@ def _recover_previous_instagram_lead(page_id, sender_id, account, current=None):
             _restore_instagram_identity(candidate, page_id, sender_id)
             return candidate
     return current
+
+
+def _split_text(text, limit=900):
+    text = str(text or "").strip()
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+
+    parts = []
+    remaining = text
+    while len(remaining) > limit:
+        cut = remaining.rfind("\n\n", 0, limit)
+        if cut < int(limit * 0.55):
+            cut = remaining.rfind("\n", 0, limit)
+        if cut < int(limit * 0.55):
+            cut = remaining.rfind(" ", 0, limit)
+        if cut < int(limit * 0.55):
+            cut = limit
+        parts.append(remaining[:cut].strip())
+        remaining = remaining[cut:].strip()
+    if remaining:
+        parts.append(remaining)
+    return parts
+
+
+def _send_instagram_safe(recipient_id, reply, token):
+    """Envia apresentação longa em partes e mantém quick replies no fim."""
+    if not reply:
+        return False, "Resposta vazia"
+
+    reply = igf._instagramize(reply)
+    kind, data = fm._parse_marker(reply)
+
+    if kind in {"buttons", "list"}:
+        body = (data or {}).get("body", "")
+        chunks = _split_text(body)
+        if not chunks:
+            return False, "Mensagem sem conteúdo"
+
+        for chunk in chunks[:-1]:
+            ok, detail = sc._send_instagram(recipient_id, chunk, token)
+            if not ok:
+                return False, detail
+
+        final_data = dict(data or {})
+        final_data["body"] = chunks[-1]
+        prefix = "[[BUTTONS]]" if kind == "buttons" else "[[LIST]]"
+        final_message = prefix + json.dumps(final_data, ensure_ascii=False)
+        return sc._send_instagram(recipient_id, final_message, token)
+
+    last_detail = ""
+    for chunk in _split_text(reply):
+        ok, last_detail = sc._send_instagram(recipient_id, chunk, token)
+        if not ok:
+            return False, last_detail
+    return True, last_detail
 
 
 def instagram_webhook_hotfix():
@@ -109,8 +161,6 @@ def instagram_webhook_hotfix():
                 account = sc._account_config(page_id)
                 lead = sc._find_lead(page_id, sender_id)
 
-                # Se a conversa reiniciou por ter trocado a chave IG pelo WhatsApp,
-                # tenta recuperar o lead anterior antes de criar/continuar outro.
                 if lead:
                     current_count = crm.Interaction.query.filter_by(
                         lead_id=lead.id, channel="Instagram", direction="in"
@@ -157,9 +207,6 @@ def instagram_webhook_hotfix():
                     lead_id=lead.id, channel="Instagram", direction="in"
                 ).count()
 
-                # No passo 3 o cliente informa o WhatsApp. O fluxo padrão grava esse
-                # valor em lead.phone; no Instagram isso quebrava a busca do próximo
-                # evento. Guardamos o WhatsApp em Q_WHATSAPP e restauramos a chave IG.
                 informed_whatsapp = text if inbound_count == 3 else ""
                 p._apply_answer_by_count(lead, text, inbound_count, "Instagram")
                 _restore_instagram_identity(
@@ -177,13 +224,17 @@ def instagram_webhook_hotfix():
                 if os.getenv("AUTO_REPLY_INSTAGRAM", "0") == "1":
                     reply = p._reply_for_instagram(lead)
                     if reply:
-                        ok, detail = sc._send_instagram(sender_id, reply, account["token"])
+                        ok, detail = _send_instagram_safe(sender_id, reply, account["token"])
                         if ok:
+                            log_message = reply
+                            kind, parsed = fm._parse_marker(reply)
+                            if kind:
+                                log_message = (parsed or {}).get("body", reply)
                             crm.db.session.add(crm.Interaction(
                                 lead_id=lead.id,
                                 channel="Instagram",
                                 direction="out",
-                                message=reply,
+                                message=log_message,
                                 ai_generated=False,
                             ))
                             crm.db.session.commit()
