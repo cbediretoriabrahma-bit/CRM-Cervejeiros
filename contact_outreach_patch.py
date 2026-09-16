@@ -131,6 +131,7 @@ def _outreach_html(lead):
         buttons += '<span class="badge" style="padding:10px 12px">📸 Instagram conectado ao lead</span>'
 
     disabled = ' disabled' if not (status["whatsapp"] or status["instagram"]) else ''
+    default_message = "Olá, tudo bem? Sou da equipe Cervejeiros. Gostaria de falar com você sobre seu interesse em nossa operação."
     return f'''
 <section class="panel" style="margin-top:18px;border:2px solid #dbe4ee">
   <div class="title-row" style="margin-bottom:10px">
@@ -145,7 +146,7 @@ def _outreach_html(lead):
       <select name="channel" required{disabled}>{''.join(options)}</select>
     </label>
     <label><b>Mensagem para o cliente</b>
-      <textarea name="message" rows="4" placeholder="Ex.: Olá, tudo bem? Sou da equipe Cervejeiros. Gostaria de falar com você sobre seu interesse em nossa operação." required{disabled}></textarea>
+      <textarea name="message" rows="4" required{disabled}>{default_message}</textarea>
     </label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn primary" type="submit"{disabled}>Enviar mensagem</button>
