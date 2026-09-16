@@ -4,16 +4,8 @@ from zoneinfo import ZoneInfo
 
 from flask import flash, redirect, render_template, request, url_for
 
-# Importa o módulo completo que já contém o webhook e a automação do WhatsApp.
-# O novo pipeline comercial é aplicado por cima, sem perder as integrações existentes.
 import patched_app as patched
-
-# Garante que o patch final com as perguntas, pontuação e pipeline mais recentes
-# seja aplicado também quando o CRM inicia pelo gunicorn crm_entry:app.
 import sitecustomize  # noqa: F401
-
-# Padroniza a apresentação das respostas: pergunta em bloco, opções em linhas
-# separadas e espaçamento adequado para leitura no WhatsApp/Instagram.
 import reply_format_patch  # noqa: F401
 
 if not os.getenv("QUALIFICATION_VIDEO_URL"):
@@ -29,7 +21,6 @@ import instagram_video_patch  # noqa: F401
 crm = patched.crm
 app = patched.app
 
-# Pipeline comercial oficial após a qualificação automática.
 COMMERCIAL_PIPELINE = [
     "Novo Lead",
     "Em Qualificação",
@@ -45,7 +36,7 @@ COMMERCIAL_PIPELINE = [
 ]
 crm.PIPELINE[:] = COMMERCIAL_PIPELINE
 
-# Mantém etapas comerciais manuais depois que o lead chega à reunião.
+
 def _commercial_auto_stage(lead, preserve=True):
     manual_stages = {
         "Reunião Agendada",
@@ -66,104 +57,166 @@ def _commercial_auto_stage(lead, preserve=True):
         return "Em Qualificação"
     return "Novo Lead"
 
+
 crm.auto_stage = _commercial_auto_stage
 
 TZ = ZoneInfo("America/Sao_Paulo")
+UTC = ZoneInfo("UTC")
+WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 
 
 def _meeting_hours():
-    return [time(hour, 0) for hour in range(9, 20)]
+    return [time(hour, 0) for hour in range(9, 21)]
 
 
-def _slot_is_free(local_dt, owner_id):
-    utc_naive = local_dt.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+def _slot_is_free(local_dt, owner_id=None):
+    """Bloqueia o horário se existir QUALQUER reunião pendente no mesmo intervalo.
+
+    Vale igualmente para 1ª e 2ª reunião e para qualquer responsável, evitando
+    dois compromissos do CRM no mesmo horário.
+    """
+    utc_naive = local_dt.astimezone(UTC).replace(tzinfo=None)
     start = utc_naive
     end = utc_naive + timedelta(hours=1)
-    query = crm.Task.query.filter(
+    conflict = crm.Task.query.filter(
         crm.Task.task_type == "Reunião",
         crm.Task.status == "Pendente",
         crm.Task.due_at >= start,
         crm.Task.due_at < end,
-    )
-    if owner_id is None:
-        query = query.filter(crm.Task.owner_id.is_(None))
-    else:
-        query = query.filter(crm.Task.owner_id == owner_id)
-    return query.first() is None
+    ).first()
+    return conflict is None
 
 
-def _second_meeting_options(lead):
-    now = datetime.now(TZ)
-    options = []
-    for add_day in range(0, 15):
-        day = (now + timedelta(days=add_day)).date()
-        if day.weekday() >= 5:
-            continue
-        for hr in _meeting_hours():
-            slot = datetime.combine(day, hr, tzinfo=TZ)
-            if slot <= now + timedelta(hours=2):
-                continue
-            if _slot_is_free(slot, lead.owner_id):
-                options.append(slot)
-            if len(options) == 3:
-                return options
-    return options
+def _format_day(day):
+    return f"{WEEKDAYS[day.weekday()]}, {day.strftime('%d/%m')}"
 
 
 def _format_slot(slot):
-    weekdays = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
-    return f"{weekdays[slot.weekday()]}, {slot.strftime('%d/%m')} às {slot.strftime('%H:%M')}"
+    return f"{WEEKDAYS[slot.weekday()]}, {slot.strftime('%d/%m')} às {slot.strftime('%H:%M')}"
+
+
+def _second_meeting_slots_for_day(day):
+    now = datetime.now(TZ)
+    slots = []
+    for hr in _meeting_hours():
+        slot = datetime.combine(day, hr, tzinfo=TZ)
+        if slot <= now + timedelta(hours=2):
+            continue
+        if _slot_is_free(slot):
+            slots.append(slot)
+    return slots
+
+
+def _second_meeting_days():
+    now = datetime.now(TZ)
+    days = []
+    for add_day in range(0, 30):
+        day = (now + timedelta(days=add_day)).date()
+        if day.weekday() >= 5:
+            continue
+        if len(_second_meeting_slots_for_day(day)) >= 2:
+            days.append(day)
+        if len(days) == 5:
+            break
+    return days
 
 
 @app.route("/lead/<int:lead_id>/second-meeting", methods=["GET", "POST"])
 @crm.login_required
 def lead_second_meeting(lead_id):
     lead = crm.visible_leads_query().filter_by(id=lead_id).first_or_404()
+    selected_day = None
 
     if request.method == "POST":
-        raw = (request.form.get("slot") or "").strip()
-        try:
-            slot = datetime.fromisoformat(raw)
-        except Exception:
-            flash("Horário inválido. Escolha uma das opções disponíveis.", "danger")
-            return redirect(url_for("lead_second_meeting", lead_id=lead.id))
+        action = (request.form.get("action") or "").strip()
 
-        if slot.tzinfo is None:
-            slot = slot.replace(tzinfo=TZ)
-        else:
-            slot = slot.astimezone(TZ)
+        if action == "select_day":
+            raw_day = (request.form.get("day") or "").strip()
+            try:
+                selected_day = datetime.fromisoformat(raw_day).date()
+            except Exception:
+                flash("Dia inválido. Escolha uma das opções disponíveis.", "danger")
+                return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
-        if not _slot_is_free(slot, lead.owner_id):
-            flash("Esse horário acabou de ser ocupado. Escolha uma nova opção.", "danger")
-            return redirect(url_for("lead_second_meeting", lead_id=lead.id))
+            if selected_day.weekday() >= 5 or len(_second_meeting_slots_for_day(selected_day)) < 2:
+                flash("Esse dia não possui mais duas opções de horário livres. Escolha outro dia.", "warning")
+                return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
-        utc_naive = slot.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-        crm.db.session.add(crm.Task(
-            lead_id=lead.id,
-            owner_id=lead.owner_id,
-            title=f"2ª reunião com {lead.name}",
-            task_type="Reunião",
-            due_at=utc_naive,
-            status="Pendente",
-            notes=f"2ª reunião comercial de 1 hora agendada para {_format_slot(slot)}.",
-        ))
-        lead.next_followup = utc_naive
-        lead.stage = "2ª Reunião Agendada"
-        crm.db.session.add(crm.AutomationLog(
-            lead_id=lead.id,
-            action="2ª reunião agendada",
-            detail=f"Agendada para {_format_slot(slot)} com o responsável do lead.",
-        ))
-        crm.db.session.commit()
-        flash("2ª reunião agendada com sucesso.", "success")
-        return redirect(url_for("lead_detail", lead_id=lead.id))
+        elif action == "confirm_slot":
+            raw_slot = (request.form.get("slot") or "").strip()
+            raw_day = (request.form.get("day") or "").strip()
+            try:
+                slot = datetime.fromisoformat(raw_slot)
+                selected_day = datetime.fromisoformat(raw_day).date()
+            except Exception:
+                flash("Horário inválido. Escolha novamente.", "danger")
+                return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
-    options = _second_meeting_options(lead)
+            if slot.tzinfo is None:
+                slot = slot.replace(tzinfo=TZ)
+            else:
+                slot = slot.astimezone(TZ)
+
+            if slot.date() != selected_day or slot.weekday() >= 5:
+                flash("Horário inválido para o dia selecionado.", "danger")
+                return redirect(url_for("lead_second_meeting", lead_id=lead.id))
+
+            # Verificação final imediatamente antes de gravar: qualquer 1ª ou 2ª
+            # reunião já existente torna este horário indisponível.
+            if not _slot_is_free(slot):
+                flash("Esse horário acabou de ser ocupado por outra reunião. Escolha outro horário disponível.", "warning")
+                options = _second_meeting_slots_for_day(selected_day)[:2]
+                return render_template(
+                    "second_meeting.html",
+                    lead=lead,
+                    days=[],
+                    selected_day=selected_day.isoformat(),
+                    selected_day_label=_format_day(selected_day),
+                    options=[(s.isoformat(), s.strftime("%H:%M")) for s in options],
+                )
+
+            utc_naive = slot.astimezone(UTC).replace(tzinfo=None)
+            crm.db.session.add(crm.Task(
+                lead_id=lead.id,
+                owner_id=lead.owner_id,
+                title=f"2ª reunião com {lead.name}",
+                task_type="Reunião",
+                due_at=utc_naive,
+                status="Pendente",
+                notes=f"2ª reunião comercial de 1 hora agendada para {_format_slot(slot)}.",
+            ))
+            lead.next_followup = utc_naive
+            lead.stage = "2ª Reunião Agendada"
+            crm.db.session.add(crm.AutomationLog(
+                lead_id=lead.id,
+                action="2ª reunião agendada",
+                detail=f"Agendada para {_format_slot(slot)}. Horário validado contra 1ª e 2ª reuniões existentes.",
+            ))
+            crm.db.session.commit()
+            flash("2ª reunião agendada com sucesso.", "success")
+            return redirect(url_for("lead_detail", lead_id=lead.id))
+
+    if selected_day:
+        options = _second_meeting_slots_for_day(selected_day)[:2]
+        return render_template(
+            "second_meeting.html",
+            lead=lead,
+            days=[],
+            selected_day=selected_day.isoformat(),
+            selected_day_label=_format_day(selected_day),
+            options=[(slot.isoformat(), slot.strftime("%H:%M")) for slot in options],
+        )
+
+    days = _second_meeting_days()
     return render_template(
         "second_meeting.html",
         lead=lead,
-        options=[(slot.isoformat(), _format_slot(slot)) for slot in options],
+        days=[(day.isoformat(), _format_day(day)) for day in days],
+        selected_day=None,
+        selected_day_label=None,
+        options=[],
     )
+
 
 import final_qualification_patch  # noqa: F401,E402
 import flow_resilience_patch  # noqa: F401,E402
@@ -176,3 +229,11 @@ import meeting_day_selection_patch  # noqa: F401,E402
 import instagram_schedule_hotfix  # noqa: F401,E402
 import meeting_report_patch  # noqa: F401,E402
 import pipeline_stage_migration_patch  # noqa: F401,E402
+
+# Garante que o agendamento automático da 1ª reunião use a mesma regra global:
+# um horário ocupado por qualquer reunião (1ª ou 2ª) não pode ser oferecido.
+try:
+    import sitecustomize as _sc
+    _sc._slot_is_free = _slot_is_free
+except Exception:
+    pass
