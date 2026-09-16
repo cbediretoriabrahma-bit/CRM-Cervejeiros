@@ -107,3 +107,6 @@ import onboarding_contact_patch  # noqa: F401,E402
 
 # Substitui o convite final por uma única ação: agendar reunião com o consultor.
 import single_consultant_cta_patch  # noqa: F401,E402
+
+# Garante o processamento e a resposta de mensagens e quick replies no Direct.
+import instagram_reply_hotfix  # noqa: F401,E402
