@@ -37,3 +37,6 @@ def source_lead_report():
 
 
 app.jinja_env.globals["source_lead_report"] = source_lead_report
+
+# Complementa o Dashboard com os dados completos de qualificação nos cartões de reunião.
+import dashboard_meeting_summary_patch  # noqa: F401,E402
