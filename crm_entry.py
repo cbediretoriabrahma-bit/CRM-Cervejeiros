@@ -232,6 +232,7 @@ import pipeline_stage_migration_patch  # noqa: F401,E402
 import team_dashboard_patch  # noqa: F401,E402
 import source_report_patch  # noqa: F401,E402
 import dashboard_meeting_summary_patch  # noqa: F401,E402
+import reports_team_patch  # noqa: F401,E402
 
 # Garante que o agendamento automático da 1ª reunião use a mesma regra global:
 # um horário ocupado por qualquer reunião (1ª ou 2ª) não pode ser oferecido.
