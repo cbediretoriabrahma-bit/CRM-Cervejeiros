@@ -116,12 +116,23 @@ def archived_leads():
 def lead_delete(lead_id):
     lead = _all_visible_leads_query().filter_by(id=lead_id).first_or_404()
 
-    # Remove dependências explicitamente para evitar erro de chave estrangeira.
-    crm.Interaction.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
-    crm.Task.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
-    crm.AutomationLog.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
-    crm.db.session.delete(lead)
-    crm.db.session.commit()
+    try:
+        # Relatórios de reunião possuem chave estrangeira para lead e task.
+        # Eles precisam ser removidos antes das tarefas e antes do próprio lead.
+        MeetingReport = getattr(crm, "MeetingReport", None)
+        if MeetingReport is not None:
+            MeetingReport.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+
+        crm.Interaction.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+        crm.Task.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+        crm.AutomationLog.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+        crm.db.session.delete(lead)
+        crm.db.session.commit()
+    except Exception as exc:
+        crm.db.session.rollback()
+        app.logger.exception("Erro ao excluir lead definitivamente id=%s", lead_id)
+        flash(f"Não foi possível excluir o lead definitivamente: {exc}", "danger")
+        return redirect(url_for("archived_leads"))
 
     flash("Lead excluído definitivamente.", "success")
     return redirect(url_for("archived_leads"))
