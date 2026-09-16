@@ -96,10 +96,11 @@ def _format_slot(slot):
 
 
 def _second_meeting_slots_for_day(day):
+    """Para a 2ª reunião, oferece somente horários da tarde (13h às 20h)."""
     now = datetime.now(TZ)
     slots = []
-    for hr in _meeting_hours():
-        slot = datetime.combine(day, hr, tzinfo=TZ)
+    for hour in range(13, 21):
+        slot = datetime.combine(day, time(hour, 0), tzinfo=TZ)
         if slot <= now + timedelta(hours=2):
             continue
         if _slot_is_free(slot):
@@ -108,6 +109,7 @@ def _second_meeting_slots_for_day(day):
 
 
 def _second_meeting_days():
+    """Mostra dias úteis que tenham pelo menos 2 horários livres à tarde."""
     now = datetime.now(TZ)
     days = []
     for add_day in range(0, 30):
@@ -139,7 +141,7 @@ def lead_second_meeting(lead_id):
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
             if selected_day.weekday() >= 5 or len(_second_meeting_slots_for_day(selected_day)) < 2:
-                flash("Esse dia não possui mais duas opções de horário livres. Escolha outro dia.", "warning")
+                flash("Esse dia não possui mais duas opções de horário livres à tarde. Escolha outro dia.", "warning")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
         elif action == "confirm_slot":
@@ -157,12 +159,10 @@ def lead_second_meeting(lead_id):
             else:
                 slot = slot.astimezone(TZ)
 
-            if slot.date() != selected_day or slot.weekday() >= 5:
-                flash("Horário inválido para o dia selecionado.", "danger")
+            if slot.date() != selected_day or slot.weekday() >= 5 or not (13 <= slot.hour <= 20):
+                flash("Horário inválido para o dia selecionado. A 2ª reunião deve ser marcada em uma das opções da tarde.", "danger")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
-            # Verificação final imediatamente antes de gravar: qualquer 1ª ou 2ª
-            # reunião já existente torna este horário indisponível.
             if not _slot_is_free(slot):
                 flash("Esse horário acabou de ser ocupado por outra reunião. Escolha outro horário disponível.", "warning")
                 options = _second_meeting_slots_for_day(selected_day)[:2]
