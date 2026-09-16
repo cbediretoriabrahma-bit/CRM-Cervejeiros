@@ -4,9 +4,10 @@ Adiciona:
 - listas separadas de 1ª e 2ª reunião no Dashboard;
 - prioridade/aviso conforme proximidade da reunião;
 - acesso rápido ao lead e sua qualificação;
-- relatório pós-reunião persistente, com múltiplos registros por cliente;
+- relatórios separados para 1ª e 2ª reunião;
 - próxima ação e data de retorno;
-- opção de concluir a reunião ao salvar o relatório.
+- opção de concluir a reunião ao salvar o relatório;
+- atualização automática da etapa quando a reunião é concluída pelo relatório.
 """
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -50,9 +51,15 @@ def _visible_meeting_query():
 
 
 def _is_second_meeting(task):
+    if not task:
+        return False
     title = (task.title or "").lower()
     notes = (task.notes or "").lower()
-    return "2ª" in title or "2a" in title or "segunda" in title or "2ª" in notes or "segunda" in notes
+    return "2ª" in title or "2a" in title or "segunda" in title or "2ª" in notes or "2a" in notes or "segunda" in notes
+
+
+def _meeting_number(task):
+    return 2 if _is_second_meeting(task) else 1
 
 
 def _dashboard_meetings():
@@ -80,7 +87,6 @@ def _local_dt(value):
 
 
 def _meeting_alert(task):
-    """Retorna rótulo curto e classe visual da prioridade da reunião."""
     local = _local_dt(task.due_at)
     if not local:
         return {"label": "SEM DATA", "level": "normal"}
@@ -110,12 +116,41 @@ def _lead_meetings(lead_id):
     )
 
 
+def _lead_first_meetings(lead_id):
+    return [t for t in _lead_meetings(lead_id) if not _is_second_meeting(t)]
+
+
+def _lead_second_meetings(lead_id):
+    return [t for t in _lead_meetings(lead_id) if _is_second_meeting(t)]
+
+
 def _lead_meeting_reports(lead_id):
     return (
         MeetingReport.query.filter_by(lead_id=lead_id)
         .order_by(MeetingReport.created_at.desc())
         .all()
     )
+
+
+def _lead_first_meeting_reports(lead_id):
+    reports = _lead_meeting_reports(lead_id)
+    return [r for r in reports if not r.task or not _is_second_meeting(r.task)]
+
+
+def _lead_second_meeting_reports(lead_id):
+    reports = _lead_meeting_reports(lead_id)
+    return [r for r in reports if r.task and _is_second_meeting(r.task)]
+
+
+def _meeting_status(task):
+    if not task:
+        return "Sem reunião"
+    status = (task.status or "").strip().lower()
+    if status.startswith("conclu"):
+        return "✅ Realizada"
+    if status == "pendente":
+        return "📅 Agendada"
+    return task.status or "-"
 
 
 def _br_datetime(value, include_year=True):
@@ -132,8 +167,14 @@ def _meeting_report_context():
         "dashboard_first_meetings": _dashboard_first_meetings,
         "dashboard_second_meetings": _dashboard_second_meetings,
         "meeting_alert": _meeting_alert,
+        "meeting_number": _meeting_number,
+        "meeting_status": _meeting_status,
         "lead_meetings": _lead_meetings,
+        "lead_first_meetings": _lead_first_meetings,
+        "lead_second_meetings": _lead_second_meetings,
         "lead_meeting_reports": _lead_meeting_reports,
+        "lead_first_meeting_reports": _lead_first_meeting_reports,
+        "lead_second_meeting_reports": _lead_second_meeting_reports,
         "br_datetime": _br_datetime,
     }
 
@@ -185,13 +226,20 @@ def lead_meeting_report(lead_id):
 
     if task and request.form.get("mark_done") == "1":
         task.status = "Concluída"
+        if _is_second_meeting(task):
+            if lead.stage == "2ª Reunião Agendada":
+                lead.stage = "2ª Reunião Realizada"
+        else:
+            if lead.stage == "Reunião Agendada":
+                lead.stage = "1ª Reunião Realizada"
 
+    number = _meeting_number(task) if task else 1
     crm.db.session.add(crm.AutomationLog(
         lead_id=lead.id,
-        action="Relatório de reunião",
-        detail=(f"Relatório salvo. Próxima ação: {next_action}." if next_action else "Relatório pós-reunião salvo no histórico do cliente."),
+        action=f"Relatório da {number}ª reunião",
+        detail=(f"Relatório salvo. Próxima ação: {next_action}." if next_action else f"Resumo da {number}ª reunião salvo no histórico do cliente."),
     ))
 
     crm.db.session.commit()
-    flash("Relatório da reunião salvo no histórico do cliente.", "success")
+    flash(f"Resumo da {number}ª reunião salvo no histórico do cliente.", "success")
     return redirect(url_for("lead_detail", lead_id=lead.id))
