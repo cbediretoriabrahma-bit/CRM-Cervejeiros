@@ -2,6 +2,8 @@
 
 Garante que o webhook do Direct aceite texto e quick replies, grave a resposta,
 aplique o mesmo fluxo de qualificação usado pelo CRM e envie a próxima pergunta.
+Também preserva a chave técnica do Instagram quando o lead informa o WhatsApp,
+para que a conversa não reinicie depois da pergunta de cidade.
 """
 import os
 from datetime import datetime
@@ -22,6 +24,59 @@ def _extract_text(message):
     if payload:
         return payload
     return ""
+
+
+def _instagram_key(page_id, sender_id):
+    return sc._lead_key(page_id, sender_id)
+
+
+def _restore_instagram_identity(lead, page_id, sender_id, informed_whatsapp=""):
+    """Mantém a chave IG no campo phone e guarda o WhatsApp informado nas notas."""
+    key = _instagram_key(page_id, sender_id)
+    if informed_whatsapp:
+        try:
+            sc._set_tag(lead, "Q_WHATSAPP", informed_whatsapp)
+        except Exception:
+            pass
+    try:
+        sc._set_tag(lead, "Q_INSTAGRAM_KEY", key)
+    except Exception:
+        pass
+    lead.phone = key
+
+
+def _recover_previous_instagram_lead(page_id, sender_id, account, current=None):
+    """Recupera conversa que tenha sido quebrada quando o WhatsApp substituiu a chave IG.
+
+    Isso corrige conversas já iniciadas antes deste hotfix. A busca só considera
+    a mesma página, o mesmo nome de perfil e um lead com histórico maior de Direct.
+    """
+    profile_name = sc._profile_name(sender_id, account["token"])
+    if not profile_name:
+        return current
+
+    query = crm.Lead.query.filter(
+        crm.Lead.source == "Instagram",
+        crm.Lead.name == profile_name,
+        crm.Lead.notes.ilike(f"%Page ID: {page_id}%"),
+    )
+    if current is not None:
+        query = query.filter(crm.Lead.id != current.id)
+
+    for candidate in query.order_by(crm.Lead.id.desc()).limit(10).all():
+        count = crm.Interaction.query.filter_by(
+            lead_id=candidate.id, channel="Instagram", direction="in"
+        ).count()
+        if count >= 2:
+            old_phone = candidate.phone or ""
+            if old_phone and not old_phone.startswith("IG-"):
+                try:
+                    sc._set_tag(candidate, "Q_WHATSAPP", old_phone)
+                except Exception:
+                    pass
+            _restore_instagram_identity(candidate, page_id, sender_id)
+            return candidate
+    return current
 
 
 def instagram_webhook_hotfix():
@@ -53,11 +108,31 @@ def instagram_webhook_hotfix():
 
                 account = sc._account_config(page_id)
                 lead = sc._find_lead(page_id, sender_id)
+
+                # Se a conversa reiniciou por ter trocado a chave IG pelo WhatsApp,
+                # tenta recuperar o lead anterior antes de criar/continuar outro.
+                if lead:
+                    current_count = crm.Interaction.query.filter_by(
+                        lead_id=lead.id, channel="Instagram", direction="in"
+                    ).count()
+                    if current_count <= 1:
+                        recovered = _recover_previous_instagram_lead(
+                            page_id, sender_id, account, current=lead
+                        )
+                        if recovered is not None:
+                            lead = recovered
+                else:
+                    recovered = _recover_previous_instagram_lead(
+                        page_id, sender_id, account, current=None
+                    )
+                    if recovered is not None:
+                        lead = recovered
+
                 if not lead:
                     profile_name = sc._profile_name(sender_id, account["token"])
                     lead = crm.Lead(
                         name=profile_name or f"Instagram {sender_id[-4:]}",
-                        phone=sc._lead_key(page_id, sender_id),
+                        phone=_instagram_key(page_id, sender_id),
                         source="Instagram",
                         timeframe="Sem prazo",
                         stage="Novo Lead",
@@ -65,6 +140,7 @@ def instagram_webhook_hotfix():
                     )
                     crm.db.session.add(lead)
                     crm.db.session.flush()
+                    _restore_instagram_identity(lead, page_id, sender_id)
                     crm.assign_round_robin(lead)
                     crm.requalify(lead, preserve=False)
 
@@ -80,7 +156,15 @@ def instagram_webhook_hotfix():
                 inbound_count = crm.Interaction.query.filter_by(
                     lead_id=lead.id, channel="Instagram", direction="in"
                 ).count()
+
+                # No passo 3 o cliente informa o WhatsApp. O fluxo padrão grava esse
+                # valor em lead.phone; no Instagram isso quebrava a busca do próximo
+                # evento. Guardamos o WhatsApp em Q_WHATSAPP e restauramos a chave IG.
+                informed_whatsapp = text if inbound_count == 3 else ""
                 p._apply_answer_by_count(lead, text, inbound_count, "Instagram")
+                _restore_instagram_identity(
+                    lead, page_id, sender_id, informed_whatsapp=informed_whatsapp
+                )
 
                 if message_id:
                     crm.db.session.add(crm.AutomationLog(
