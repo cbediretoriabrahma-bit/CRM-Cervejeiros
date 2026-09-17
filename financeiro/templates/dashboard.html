@@ -85,9 +85,11 @@
 </div>
 
 <div class="legend"><span class="dot red"></span>Vencido <span class="dot yellow"></span>Até 3 dias <span class="dot orange"></span>Até 7 dias <span class="dot blue"></span>A vencer <span class="dot purple"></span>Parcial <span class="dot green"></span>Pago</div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0"><strong>{{ total_count|default(0) }} conta(s) no período</strong><span>Página {{ page|default(1) }} de {{ total_pages|default(1) }} • até {{ per_page|default(50) }} por página</span></div>
 <div class="table-wrap"><table><thead><tr><th>Status</th><th>Loja</th><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th>Ações</th></tr></thead><tbody>
 {% for a in accounts %}<tr class="row-{{ a.color_class }}"><td><span class="badge {{ a.color_class }}">{{ a.status }}</span></td><td><strong>{{ a.store or 'Geral' }}</strong></td><td>{{ a.due_date.strftime('%d/%m/%Y') }}</td><td>{{ a.supplier }}</td><td>{{ a.description }}</td><td>{{ a.total_amount|brl }}</td><td>{{ a.paid_amount|brl }}</td><td><strong>{{ a.balance|brl }}</strong></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" href="{{ url_for('detail', account_id=a.id) }}">Abrir</a>{% if a.balance > 0 %}<form class="quick-settle" method="post" action="{{ url_for('settle', account_id=a.id) }}" style="display:inline"><input type="hidden" name="payment_method" value="Baixa rápida"><button class="btn primary small" type="submit">✓ Baixar</button></form>{% endif %}</div></td></tr>{% else %}<tr><td colspan="9" class="empty">Nenhuma conta encontrada.</td></tr>{% endfor %}
 </tbody></table></div>
+{% if prev_url or next_url %}<div style="display:flex;justify-content:center;gap:10px;margin:18px 0 6px">{% if prev_url %}<a class="btn" href="{{ prev_url }}">← Anterior</a>{% endif %}{% if next_url %}<a class="btn primary" href="{{ next_url }}">Próxima →</a>{% endif %}</div>{% endif %}
 
 <script>
 const labels={{ unit_rows|map(attribute='store')|list|tojson }};
