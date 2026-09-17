@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import selectinload
 
 import multi_store_filter_patch as multi
@@ -17,7 +17,6 @@ login_required = multi.login_required
 
 # ---------------------------------------------------------------------------
 # 1) Evita rotinas pesadas de inicialização a cada clique/requisição.
-#    Elas continuam existindo, mas rodam apenas quando necessário.
 # ---------------------------------------------------------------------------
 _original_bootstrap = core.bootstrap
 _original_sync_legacy_units = base.sync_legacy_units
@@ -54,54 +53,168 @@ app.before_request_funcs[None] = [
 
 
 # ---------------------------------------------------------------------------
-# 2) Painel/Contas a pagar otimizado.
-#    - carrega os pagamentos das contas em lote (elimina N+1 queries);
-#    - usa SUM no banco para receitas/despesas do mês;
-#    - monta resumo por unidade com GROUP BY, em vez de 2 consultas por loja.
-#    Nenhum lançamento ou regra financeira é alterado.
+# 2) Painel otimizado.
+#    - por padrão mostra somente o mês financeiro escolhido;
+#    - pagina 50 contas por vez;
+#    - calcula totais no banco, sem carregar todo o histórico;
+#    - carrega pagamentos somente das contas visíveis na página;
+#    - mantém filtros, DRE, gráficos e totais gerais do período.
 # ---------------------------------------------------------------------------
 def _sum_scalar(query):
     value = query.scalar()
     return float(value or 0)
 
 
-def _dashboard_fast():
-    status_filter = core.request.args.get("status", "")
-    selected_stores = multi._selected_stores()
-    search = core.request.args.get("q", "").strip()
-    date_from_raw = core.request.args.get("date_from", "")
-    date_to_raw = core.request.args.get("date_to", "")
-    date_from = core.parse_date(date_from_raw)
-    date_to = core.parse_date(date_to_raw)
-    month_raw = core.request.args.get("month", date.today().strftime("%Y-%m"))
-    month_start, month_end = core.parse_month(month_raw)
+def _status_predicate(status, paid, balance, today):
+    if not status:
+        return None
+    if status == "Pago":
+        return balance <= 0.009
+    if status == "Parcial vencido":
+        return core.db.and_(balance > 0.009, paid > 0, Payable.due_date < today)
+    if status == "Parcial":
+        return core.db.and_(balance > 0.009, paid > 0, Payable.due_date >= today)
+    if status == "Vencido":
+        return core.db.and_(balance > 0.009, paid <= 0.009, Payable.due_date < today)
+    if status == "Vence em 3 dias":
+        return core.db.and_(
+            balance > 0.009,
+            paid <= 0.009,
+            Payable.due_date >= today,
+            Payable.due_date <= today + timedelta(days=3),
+        )
+    if status == "Vence em 7 dias":
+        return core.db.and_(
+            balance > 0.009,
+            paid <= 0.009,
+            Payable.due_date > today + timedelta(days=3),
+            Payable.due_date <= today + timedelta(days=7),
+        )
+    if status == "A vencer":
+        return core.db.and_(
+            balance > 0.009,
+            paid <= 0.009,
+            Payable.due_date > today + timedelta(days=7),
+        )
+    return None
 
-    q = Payable.query.options(selectinload(Payable.payments))
+
+def _apply_account_filters(query, selected_stores, search, date_from, date_to):
     if search:
         like = f"%{search}%"
-        q = q.filter(core.db.or_(
+        query = query.filter(core.db.or_(
             Payable.supplier.ilike(like),
             Payable.description.ilike(like),
             Payable.category.ilike(like),
             Payable.store.ilike(like),
         ))
     if selected_stores:
-        q = q.filter(Payable.store.in_(selected_stores))
+        query = query.filter(Payable.store.in_(selected_stores))
     if date_from:
-        q = q.filter(Payable.due_date >= date_from)
+        query = query.filter(Payable.due_date >= date_from)
     if date_to:
-        q = q.filter(Payable.due_date <= date_to)
+        query = query.filter(Payable.due_date <= date_to)
+    return query
 
-    accounts = q.order_by(Payable.due_date.asc(), Payable.id.desc()).all()
-    if status_filter:
-        accounts = [a for a in accounts if a.status == status_filter]
 
-    filtered_total = sum(a.total_amount or 0 for a in accounts)
-    filtered_paid = sum(a.paid_amount for a in accounts)
-    filtered_balance = sum(a.balance for a in accounts)
-    overdue_total = sum(a.balance for a in accounts if a.status in ("Vencido", "Parcial vencido"))
-    due_7_total = sum(a.balance for a in accounts if a.status in ("Vence em 3 dias", "Vence em 7 dias"))
-    overdue_count = sum(1 for a in accounts if a.status in ("Vencido", "Parcial vencido"))
+def _dashboard_fast():
+    today = date.today()
+    status_filter = core.request.args.get("status", "")
+    selected_stores = multi._selected_stores()
+    search = core.request.args.get("q", "").strip()
+    month_raw = core.request.args.get("month", today.strftime("%Y-%m"))
+    month_start, month_end = core.parse_month(month_raw)
+
+    # Se o usuário não informar um intervalo manual, a lista abre somente no mês escolhido.
+    date_from_raw = core.request.args.get("date_from", "").strip()
+    date_to_raw = core.request.args.get("date_to", "").strip()
+    if not date_from_raw and not date_to_raw:
+        date_from = month_start
+        date_to = month_end - timedelta(days=1)
+        date_from_display = date_from.isoformat()
+        date_to_display = date_to.isoformat()
+    else:
+        date_from = core.parse_date(date_from_raw)
+        date_to = core.parse_date(date_to_raw)
+        date_from_display = date_from_raw
+        date_to_display = date_to_raw
+
+    try:
+        page = max(int(core.request.args.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 50
+
+    payment_totals = core.db.session.query(
+        PayablePayment.payable_id.label("payable_id"),
+        func.coalesce(func.sum(PayablePayment.amount), 0).label("paid_amount"),
+    ).group_by(PayablePayment.payable_id).subquery()
+
+    paid = func.coalesce(payment_totals.c.paid_amount, 0.0)
+    raw_balance = Payable.total_amount - paid
+    balance = case((raw_balance > 0, raw_balance), else_=0.0)
+
+    base_q = core.db.session.query(Payable).outerjoin(
+        payment_totals, payment_totals.c.payable_id == Payable.id
+    )
+    base_q = _apply_account_filters(base_q, selected_stores, search, date_from, date_to)
+    status_pred = _status_predicate(status_filter, paid, balance, today)
+    if status_pred is not None:
+        base_q = base_q.filter(status_pred)
+
+    total_count = base_q.with_entities(func.count(Payable.id)).scalar() or 0
+    total_pages = max((total_count + per_page - 1) // per_page, 1)
+    if page > total_pages:
+        page = total_pages
+
+    page_ids = [row[0] for row in (
+        base_q.with_entities(Payable.id)
+        .order_by(Payable.due_date.asc(), Payable.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )]
+
+    if page_ids:
+        visible = Payable.query.options(selectinload(Payable.payments)).filter(Payable.id.in_(page_ids)).all()
+        order_map = {account_id: idx for idx, account_id in enumerate(page_ids)}
+        accounts = sorted(visible, key=lambda a: order_map.get(a.id, 999999))
+    else:
+        accounts = []
+
+    # Totais do filtro calculados no banco, sem carregar todas as contas.
+    aggregate_q = core.db.session.query(
+        func.coalesce(func.sum(Payable.total_amount), 0),
+        func.coalesce(func.sum(paid), 0),
+        func.coalesce(func.sum(balance), 0),
+        func.coalesce(func.sum(case((
+            core.db.and_(balance > 0.009, Payable.due_date < today), balance
+        ), else_=0.0)), 0),
+        func.coalesce(func.sum(case((
+            core.db.and_(
+                balance > 0.009,
+                paid <= 0.009,
+                Payable.due_date >= today,
+                Payable.due_date <= today + timedelta(days=7),
+            ), balance
+        ), else_=0.0)), 0),
+        func.coalesce(func.sum(case((
+            core.db.and_(balance > 0.009, Payable.due_date < today), 1
+        ), else_=0)), 0),
+    ).select_from(Payable).outerjoin(
+        payment_totals, payment_totals.c.payable_id == Payable.id
+    )
+    aggregate_q = _apply_account_filters(aggregate_q, selected_stores, search, date_from, date_to)
+    if status_pred is not None:
+        aggregate_q = aggregate_q.filter(status_pred)
+
+    agg = aggregate_q.one()
+    filtered_total = float(agg[0] or 0)
+    filtered_paid = float(agg[1] or 0)
+    filtered_balance = float(agg[2] or 0)
+    overdue_total = float(agg[3] or 0)
+    due_7_total = float(agg[4] or 0)
+    overdue_count = int(agg[5] or 0)
 
     revenue_q = core.db.session.query(func.coalesce(func.sum(Revenue.amount), 0)).filter(
         Revenue.revenue_date >= month_start,
@@ -119,7 +232,6 @@ def _dashboard_fast():
     expense_month = _sum_scalar(expense_q)
     result_month = revenue_month - expense_month
 
-    # Mantém exatamente os indicadores gerenciais existentes.
     if selected_stores:
         dre_rows = [detailed.compute_detailed_dre(month_raw, store) for store in selected_stores]
         cmv_month = sum(row.get("cmv", 0) or 0 for row in dre_rows)
@@ -169,6 +281,12 @@ def _dashboard_fast():
             "result": round(rev - exp, 2),
         })
 
+    def _page_url(target_page):
+        args = core.request.args.to_dict()
+        args["page"] = target_page
+        args.setdefault("month", month_raw)
+        return core.url_for("dashboard", **args)
+
     return core.render_template(
         "dashboard.html",
         accounts=accounts,
@@ -183,9 +301,9 @@ def _dashboard_fast():
         selected_stores=selected_stores,
         stores=stores,
         search=search,
-        date_from=date_from_raw,
-        date_to=date_to_raw,
-        today=date.today(),
+        date_from=date_from_display,
+        date_to=date_to_display,
+        today=today,
         month=month_start.strftime("%Y-%m"),
         revenue_month=revenue_month,
         expense_month=expense_month,
@@ -197,6 +315,12 @@ def _dashboard_fast():
         net_profit_month=net_profit_month,
         net_margin_pct=net_margin_pct,
         unit_rows=unit_rows,
+        page=page,
+        per_page=per_page,
+        total_count=total_count,
+        total_pages=total_pages,
+        prev_url=_page_url(page - 1) if page > 1 else None,
+        next_url=_page_url(page + 1) if page < total_pages else None,
     )
 
 
