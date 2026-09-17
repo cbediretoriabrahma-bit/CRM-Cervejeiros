@@ -160,6 +160,12 @@ def _br_datetime(value, include_year=True):
     return aware.strftime("%d/%m/%Y %H:%M" if include_year else "%d/%m %H:%M")
 
 
+def _report_redirect(lead):
+    if (request.form.get("return_to") or "").strip() == "pipeline":
+        return redirect(url_for("pipeline"))
+    return redirect(url_for("lead_detail", lead_id=lead.id))
+
+
 @crm.app.context_processor
 def _meeting_report_context():
     return {
@@ -190,7 +196,7 @@ def lead_meeting_report(lead_id):
 
     if not report_text:
         flash("Descreva o que foi conversado na reunião antes de salvar.", "danger")
-        return redirect(url_for("lead_detail", lead_id=lead.id))
+        return _report_redirect(lead)
 
     task = None
     task_id = None
@@ -228,7 +234,7 @@ def lead_meeting_report(lead_id):
         task.status = "Concluída"
         if _is_second_meeting(task):
             if lead.stage == "2ª Reunião Agendada":
-                lead.stage = "2ª Reunião Realizada"
+                lead.stage = "Envio do Material de Apoio"
         else:
             if lead.stage == "Reunião Agendada":
                 lead.stage = "1ª Reunião Realizada"
@@ -242,4 +248,4 @@ def lead_meeting_report(lead_id):
 
     crm.db.session.commit()
     flash(f"Resumo da {number}ª reunião salvo no histórico do cliente.", "success")
-    return redirect(url_for("lead_detail", lead_id=lead.id))
+    return _report_redirect(lead)
