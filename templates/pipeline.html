@@ -35,8 +35,24 @@
         <button class="btn primary" type="submit" style="width:100%">✅ 1ª reunião realizada</button>
       </form>
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
+
     {% elif l.stage == '1ª Reunião Realizada' %}
+      {% set r1 = namespace(task=None) %}
+      {% for t in lead_first_meetings(l.id) %}
+        {% if r1.task is none %}{% set r1.task = t %}{% endif %}
+      {% endfor %}
+      <details style="margin-bottom:8px">
+        <summary class="btn small" style="cursor:pointer;text-align:center">📝 Resumo da 1ª reunião</summary>
+        <form method="post" action="{{url_for('lead_meeting_report',lead_id=l.id)}}" style="display:grid;gap:6px;margin-top:7px">
+          {% if r1.task %}<input type="hidden" name="task_id" value="{{r1.task.id}}">{% endif %}
+          <input type="hidden" name="mark_done" value="1">
+          <input type="hidden" name="return_to" value="pipeline">
+          <textarea name="report_text" rows="4" placeholder="Digite o resumo da 1ª reunião..." required></textarea>
+          <button class="btn primary small" type="submit">Salvar resumo</button>
+        </form>
+      </details>
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
+
     {% elif l.stage == '2ª Reunião Agendada' %}
       {% set ns2 = namespace(task=None) %}
       {% for t in lead_second_meetings(l.id) %}
@@ -52,9 +68,25 @@
       </details>
       {% endif %}
       <form method="post" action="{{url_for('lead_stage',lead_id=l.id)}}" style="margin-bottom:8px">
-        <input type="hidden" name="stage" value="2ª Reunião Realizada">
+        <input type="hidden" name="stage" value="Envio do Material de Apoio">
         <button class="btn primary" type="submit" style="width:100%">✅ 2ª reunião realizada</button>
       </form>
+
+    {% elif l.stage == 'Envio do Material de Apoio' %}
+      {% set r2 = namespace(task=None) %}
+      {% for t in lead_second_meetings(l.id) %}
+        {% if r2.task is none %}{% set r2.task = t %}{% endif %}
+      {% endfor %}
+      <details style="margin-bottom:8px">
+        <summary class="btn small" style="cursor:pointer;text-align:center">📝 Resumo da 2ª reunião</summary>
+        <form method="post" action="{{url_for('lead_meeting_report',lead_id=l.id)}}" style="display:grid;gap:6px;margin-top:7px">
+          {% if r2.task %}<input type="hidden" name="task_id" value="{{r2.task.id}}">{% endif %}
+          <input type="hidden" name="mark_done" value="1">
+          <input type="hidden" name="return_to" value="pipeline">
+          <textarea name="report_text" rows="4" placeholder="Digite o resumo da 2ª reunião..." required></textarea>
+          <button class="btn primary small" type="submit">Salvar resumo</button>
+        </form>
+      </details>
     {% endif %}
 
     <a href="{{url_for('lead_detail',lead_id=l.id)}}" style="display:block;text-decoration:none;color:inherit">
