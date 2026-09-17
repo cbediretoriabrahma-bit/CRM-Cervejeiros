@@ -47,7 +47,7 @@
 
     {% if l.temperature == 'Frio' %}
     <div class="actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-      <form method="post" action="{{url_for('lead_delete_permanent',lead_id=l.id)}}" onsubmit="return confirm('Excluir definitivamente este lead frio? Esta ação não poderá ser desfeita.');">
+      <form method="post" action="/lead/{{l.id}}/delete-permanent" onsubmit="return confirm('Excluir definitivamente este lead frio? Esta ação não poderá ser desfeita.');">
         <button class="btn" type="submit" style="background:#8f1d1d;color:white">Excluir definitivamente</button>
       </form>
     </div>
