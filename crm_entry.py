@@ -218,6 +218,31 @@ def lead_second_meeting(lead_id):
     )
 
 
+@app.route("/lead/<int:lead_id>/delete-permanent", methods=["POST"])
+@crm.login_required
+def lead_delete_permanent(lead_id):
+    lead = crm.visible_leads_query().filter_by(id=lead_id).first_or_404()
+
+    if (lead.temperature or "").strip().lower() != "frio":
+        flash("A exclusão definitiva está disponível somente para leads frios.", "danger")
+        return redirect(request.referrer or url_for("pipeline"))
+
+    lead_name = lead.name
+    try:
+        crm.Task.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+        crm.AutomationLog.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+        crm.Interaction.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+        crm.db.session.delete(lead)
+        crm.db.session.commit()
+        flash(f"Lead {lead_name} excluído definitivamente.", "success")
+    except Exception as exc:
+        crm.db.session.rollback()
+        crm.app.logger.exception("Falha ao excluir definitivamente lead %s: %s", lead_id, exc)
+        flash("Não foi possível excluir o lead. Tente novamente.", "danger")
+
+    return redirect(url_for("pipeline"))
+
+
 import final_qualification_patch  # noqa: F401,E402
 import flow_resilience_patch  # noqa: F401,E402
 import lead_management_patch  # noqa: F401,E402
