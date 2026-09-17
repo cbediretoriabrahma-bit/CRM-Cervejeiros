@@ -1,5 +1,7 @@
 """Complemento de inicialização: reforça a apresentação comercial antes da reunião."""
 
+from flask import flash, redirect, request, url_for
+
 try:
     import patched_app as p
 except Exception:
@@ -38,3 +40,41 @@ if p is not None:
     p._qualification_reply = _qualification_reply_com_prova_social
     p._reply_for_message = lambda lead, text: _qualification_reply_com_prova_social(lead, "WhatsApp")
     p._reply_for_instagram = lambda lead: _qualification_reply_com_prova_social(lead, "Instagram")
+
+    def _delete_cold_lead_permanent(lead_id):
+        lead = crm.db.session.get(crm.Lead, lead_id)
+        if not lead:
+            flash("Lead não encontrado.", "danger")
+            return redirect(request.referrer or url_for("pipeline"))
+
+        user = crm.current_user()
+        if user and user.role == "seller" and lead.owner_id != user.id:
+            flash("Você não tem permissão para excluir este lead.", "danger")
+            return redirect(request.referrer or url_for("pipeline"))
+
+        if (lead.temperature or "").strip().lower() != "frio":
+            flash("A exclusão definitiva está disponível somente para leads frios.", "danger")
+            return redirect(request.referrer or url_for("pipeline"))
+
+        name = lead.name
+        try:
+            crm.Task.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+            crm.AutomationLog.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+            crm.Interaction.query.filter_by(lead_id=lead.id).delete(synchronize_session=False)
+            crm.db.session.delete(lead)
+            crm.db.session.commit()
+            flash(f"Lead {name} excluído definitivamente.", "success")
+        except Exception as exc:
+            crm.db.session.rollback()
+            crm.app.logger.warning("Falha ao excluir definitivamente lead %s: %s", lead_id, exc)
+            flash("Não foi possível excluir o lead. Tente novamente.", "danger")
+
+        return redirect(url_for("pipeline"))
+
+    if "lead_delete_permanent" not in crm.app.view_functions:
+        crm.app.add_url_rule(
+            "/lead/<int:lead_id>/delete-permanent",
+            endpoint="lead_delete_permanent",
+            view_func=crm.login_required(_delete_cold_lead_permanent),
+            methods=["POST"],
+        )
