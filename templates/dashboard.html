@@ -2,6 +2,50 @@
 <div class="cards"><div class="metric"><span>Leads</span><b>{{total}}</b></div><div class="metric"><span>Qualificados</span><b>{{qualified}}</b></div><div class="metric"><span>Fechados</span><b>{{closed}}</b></div><div class="metric"><span>Conversão</span><b>{{conv}}%</b></div></div>
 <div class="grid2"><section class="panel"><h2>Funil</h2><canvas id="funil"></canvas></section><section class="panel"><h2>🔥 Prioridade</h2>{% for l in hot %}<a class="lead-row" href="{{url_for('lead_detail',lead_id=l.id)}}"><b>{{l.name}}</b><span>{{l.city}}/{{l.state}}</span><em>{{l.score}} pts</em></a>{% else %}<p class="muted">Sem leads quentes.</p>{% endfor %}</section></div>
 
+{% set cal = meeting_availability_calendar(10) %}
+<section class="panel" style="margin-top:18px">
+  <div class="title-row" style="margin-bottom:12px">
+    <div>
+      <h2 style="margin:0">📅 Calendário de vagas para reuniões</h2>
+      <p class="muted" style="margin:4px 0 0">Próximos 10 dias úteis. Vermelho = horário ocupado; branco = horário disponível. Os nomes dos leads não são exibidos.</p>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:18px;height:18px;border-radius:5px;background:#b5121b;display:inline-block"></span><b>Ocupado</b></span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:18px;height:18px;border-radius:5px;background:#fff;border:1px solid #d9dee7;display:inline-block"></span><b>Livre</b></span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:18px;height:18px;border-radius:5px;background:#eef1f5;border:1px solid #d9dee7;display:inline-block"></span><b>Horário passado</b></span>
+    </div>
+  </div>
+  <div style="overflow-x:auto;padding-bottom:4px">
+    <table style="width:100%;min-width:980px;border-collapse:separate;border-spacing:5px;table-layout:fixed">
+      <thead>
+        <tr>
+          <th style="width:74px;text-align:center;padding:8px;color:#697386">Horário</th>
+          {% for day in cal.days %}
+          <th style="text-align:center;padding:8px;border-radius:9px;background:#f3f5f8">
+            <div style="font-size:12px;color:#697386">{{day.weekday}}</div>
+            <div style="font-size:16px;margin-top:2px">{{day.date}}</div>
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for hour in cal.hours %}
+        {% set hour_idx = loop.index0 %}
+        <tr>
+          <td style="text-align:center;font-weight:800;font-size:13px;padding:8px">{{hour}}</td>
+          {% for day in cal.days %}
+          {% set slot = day.slots[hour_idx] %}
+          <td title="{% if slot.occupied %}Horário ocupado{% elif slot.past %}Horário já passou{% else %}Horário disponível{% endif %}" style="height:42px;border-radius:8px;text-align:center;font-size:11px;font-weight:800;{% if slot.occupied %}background:#b5121b;color:white;border:1px solid #b5121b;{% elif slot.past %}background:#eef1f5;color:#a0a7b2;border:1px solid #e0e4ea;{% else %}background:#fff;color:#2b3445;border:1px solid #d9dee7;{% endif %}">
+            {% if slot.occupied %}OCUPADO{% elif slot.past %}—{% else %}&nbsp;{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section id="relatorios-reuniao" class="panel" style="margin-top:18px;scroll-margin-top:90px"><div class="title-row" style="margin-bottom:12px"><div><h2 style="margin:0">📋 Relatórios de Reunião</h2><p class="muted" style="margin:4px 0 0">Visualização rápida das reuniões e da qualificação completa do lead. O aviso muda automaticamente com 1 dia de antecedência.</p></div><a class="btn" href="{{url_for('agenda')}}">Ver agenda completa</a></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span class="badge" style="background:#fff3cd;color:#8a6200">🟠 AMANHÃ</span><span class="badge" style="background:#ffe1e1;color:#951820">🔴 HOJE</span><span class="badge" style="background:#ffd6d6;color:#8d1010">🚨 EM BREVE</span><span class="badge" style="background:#f3d7ff;color:#6a2483">⚠️ ATRASADA</span></div></section>
 
 <div class="grid2" style="margin-top:18px">
