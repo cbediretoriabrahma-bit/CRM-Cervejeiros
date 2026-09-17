@@ -7,6 +7,15 @@
   <h3>{{s}} <span>{{columns[s]|length}}</span></h3>
   {% for l in columns[s] %}
   <div class="lead-card">
+    {% if l.stage in ['Novo Lead','Em Qualificação','Qualificado','Lead Quente'] %}
+    <div class="contact-marker-row">
+      <form method="post" action="{{url_for('lead_toggle_contacted',lead_id=l.id)}}">
+        <button class="contact-dot {% if lead_contacted(l) %}contacted{% endif %}" type="submit" title="{% if lead_contacted(l) %}Cliente contatado — clique para desmarcar{% else %}Ainda não contatado — clique para marcar{% endif %}" aria-label="Marcar contato do cliente"></button>
+      </form>
+      <span>{% if lead_contacted(l) %}Contatado{% else %}Contato{% endif %}</span>
+    </div>
+    {% endif %}
+
     <a href="{{url_for('lead_detail',lead_id=l.id)}}" style="display:block;text-decoration:none;color:inherit">
       <b>{{l.name}}</b>
       <small>{{l.city}}/{{l.state}} · {{l.owner.name if l.owner else '-'}}</small>
