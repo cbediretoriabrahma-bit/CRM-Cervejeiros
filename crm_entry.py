@@ -228,6 +228,7 @@ import meeting_scheduler_fix_patch  # noqa: F401,E402
 import meeting_day_selection_patch  # noqa: F401,E402
 import instagram_schedule_hotfix  # noqa: F401,E402
 import meeting_report_patch  # noqa: F401,E402
+import meeting_reschedule_patch  # noqa: F401,E402
 import pipeline_stage_migration_patch  # noqa: F401,E402
 import team_dashboard_patch  # noqa: F401,E402
 import source_report_patch  # noqa: F401,E402
