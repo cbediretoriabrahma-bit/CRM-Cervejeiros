@@ -7,9 +7,10 @@ Adiciona:
 - relatórios separados para 1ª e 2ª reunião;
 - próxima ação e data de retorno;
 - opção de concluir a reunião ao salvar o relatório;
-- atualização automática da etapa quando a reunião é concluída pelo relatório.
+- atualização automática da etapa quando a reunião é concluída pelo relatório;
+- calendário de disponibilidade sem exibir nomes dos leads.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import flash, redirect, request, url_for
@@ -62,35 +63,24 @@ def _meeting_number(task):
     return 2 if _is_second_meeting(task) else 1
 
 
-def _task_matches_current_pipeline_stage(task):
-    """Só considera agendada a reunião que ainda corresponde à etapa atual do lead.
-
-    Isso evita que uma tarefa antiga continue no relatório depois que o lead
-    voltou para Lead Quente ou foi movimentado para outra fase do Pipeline.
-    """
-    if not task or (task.status or "").strip().lower() != "pendente":
+def _meeting_matches_pipeline(task):
+    """Considera ativa apenas reunião que ainda corresponde à etapa atual do lead."""
+    if not task or not task.lead or (task.status or "").strip().lower() != "pendente":
         return False
-
-    lead = crm.Lead.query.filter_by(id=task.lead_id).first()
-    if not lead:
-        return False
-
     if _is_second_meeting(task):
-        return lead.stage == "2ª Reunião Agendada"
-    return lead.stage == "Reunião Agendada"
+        return task.lead.stage == "2ª Reunião Agendada"
+    return task.lead.stage == "Reunião Agendada"
 
 
 def _dashboard_meetings():
-    # Busca um conjunto maior e depois filtra pela etapa atual do Pipeline.
-    # Assim o relatório e o Pipeline sempre exibem a mesma situação comercial.
-    pending = (
+    tasks = (
         _visible_meeting_query()
         .filter(crm.Task.status == "Pendente")
         .order_by(crm.Task.due_at.asc())
         .limit(100)
         .all()
     )
-    return [t for t in pending if _task_matches_current_pipeline_stage(t)][:30]
+    return [t for t in tasks if _meeting_matches_pipeline(t)][:30]
 
 
 def _dashboard_first_meetings():
@@ -181,6 +171,68 @@ def _br_datetime(value, include_year=True):
     return aware.strftime("%d/%m/%Y %H:%M" if include_year else "%d/%m %H:%M")
 
 
+def _meeting_availability_calendar(days_count=10):
+    """Grade dos próximos dias úteis: vermelho=ocupado, branco=livre.
+
+    Não retorna nomes de leads; somente a ocupação dos horários comerciais de 09h a 20h.
+    Reuniões antigas de leads que já saíram da etapa de reunião não bloqueiam a grade.
+    """
+    now = datetime.now(TZ)
+    days = []
+    cursor = now.date()
+    while len(days) < days_count:
+        if cursor.weekday() < 5:  # segunda a sexta, conforme fluxo de agendamento
+            days.append(cursor)
+        cursor += timedelta(days=1)
+
+    start_local = datetime.combine(days[0], datetime.min.time(), tzinfo=TZ)
+    end_local = datetime.combine(days[-1] + timedelta(days=1), datetime.min.time(), tzinfo=TZ)
+    start_utc = start_local.astimezone(UTC).replace(tzinfo=None)
+    end_utc = end_local.astimezone(UTC).replace(tzinfo=None)
+
+    tasks = (
+        _visible_meeting_query()
+        .filter(
+            crm.Task.status == "Pendente",
+            crm.Task.due_at >= start_utc,
+            crm.Task.due_at < end_utc,
+        )
+        .all()
+    )
+
+    occupied = set()
+    for task in tasks:
+        if not _meeting_matches_pipeline(task):
+            continue
+        local = _local_dt(task.due_at)
+        if local:
+            occupied.add((local.date().isoformat(), local.hour))
+
+    weekday_names = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"]
+    calendar_days = []
+    for day in days:
+        slots = []
+        for hour in range(9, 21):
+            slot_dt = datetime.combine(day, datetime.min.time(), tzinfo=TZ).replace(hour=hour)
+            is_past = slot_dt < now
+            slots.append({
+                "hour": f"{hour:02d}:00",
+                "occupied": (day.isoformat(), hour) in occupied,
+                "past": is_past,
+            })
+        calendar_days.append({
+            "iso": day.isoformat(),
+            "weekday": weekday_names[day.weekday()],
+            "date": day.strftime("%d/%m"),
+            "slots": slots,
+        })
+
+    return {
+        "hours": [f"{hour:02d}:00" for hour in range(9, 21)],
+        "days": calendar_days,
+    }
+
+
 def _report_redirect(lead):
     if (request.form.get("return_to") or "").strip() == "pipeline":
         return redirect(url_for("pipeline"))
@@ -203,6 +255,7 @@ def _meeting_report_context():
         "lead_first_meeting_reports": _lead_first_meeting_reports,
         "lead_second_meeting_reports": _lead_second_meeting_reports,
         "br_datetime": _br_datetime,
+        "meeting_availability_calendar": _meeting_availability_calendar,
     }
 
 
