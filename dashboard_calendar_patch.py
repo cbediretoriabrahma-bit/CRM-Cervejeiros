@@ -3,7 +3,7 @@
 Mostra somente dias, horários e ocupação. Não expõe nomes dos leads.
 Também mantém os relatórios sincronizados com a etapa atual do Pipeline.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
 import patched_app as p
@@ -17,7 +17,7 @@ WEEKDAYS_SHORT = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"]
 
 
 def _valid_pending_meetings():
-    """Retorna somente reuniões pendentes que ainda correspondem à etapa do lead."""
+    """Retorna somente reuniões pendentes que ainda correspondem à etapa atual do lead."""
     tasks = (
         mr._visible_meeting_query()
         .filter(crm.Task.status == "Pendente")
@@ -57,7 +57,7 @@ def _local_dt(value):
     return value.replace(tzinfo=UTC).astimezone(TZ)
 
 
-def _next_business_days(count=7):
+def _next_business_days(count=10):
     day = datetime.now(TZ).date()
     days = []
     while len(days) < count:
@@ -67,9 +67,19 @@ def _next_business_days(count=7):
     return days
 
 
-def _meeting_availability_calendar():
-    """Monta grade dos próximos 7 dias úteis, das 09h às 20h."""
-    days = _next_business_days(7)
+def _meeting_availability_calendar(count=10):
+    """Monta a grade dos próximos dias úteis, das 09h às 20h.
+
+    Vermelho no template significa ocupado; branco significa livre. Não retorna
+    nome, telefone ou qualquer outra identificação do lead.
+    """
+    try:
+        count = max(1, min(int(count), 15))
+    except Exception:
+        count = 10
+
+    now = datetime.now(TZ)
+    days = _next_business_days(count)
     meetings = _valid_pending_meetings()
 
     occupied = set()
@@ -79,28 +89,25 @@ def _meeting_availability_calendar():
             continue
         occupied.add((local.date(), local.hour))
 
-    day_items = [
-        {
-            "date": day,
-            "label": f"{WEEKDAYS_SHORT[day.weekday()]} {day.strftime('%d/%m')}",
-            "is_today": day == datetime.now(TZ).date(),
-        }
-        for day in days
-    ]
-
-    rows = []
-    for hour in range(9, 21):
-        rows.append({
-            "hour": f"{hour:02d}:00",
-            "cells": [
-                {"occupied": (day, hour) in occupied}
-                for day in days
-            ],
+    hours = [f"{hour:02d}:00" for hour in range(9, 21)]
+    day_items = []
+    for day in days:
+        slots = []
+        for hour in range(9, 21):
+            slot_dt = datetime.combine(day, time(hour, 0), tzinfo=TZ)
+            slots.append({
+                "occupied": (day, hour) in occupied,
+                "past": slot_dt < now,
+            })
+        day_items.append({
+            "weekday": WEEKDAYS_SHORT[day.weekday()],
+            "date": day.strftime("%d/%m"),
+            "slots": slots,
         })
 
     return {
         "days": day_items,
-        "rows": rows,
+        "hours": hours,
         "occupied_count": len(occupied),
     }
 
