@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,50 @@ COMMERCIAL_PIPELINE = [
     "Perdido",
 ]
 crm.PIPELINE[:] = COMMERCIAL_PIPELINE
+
+CONTACT_STAGES = {"Novo Lead", "Em Qualificação", "Qualificado", "Lead Quente"}
+CONTACT_TAG = "PIPELINE_CONTACTED"
+
+
+def _lead_contacted(lead):
+    notes = lead.notes or ""
+    match = re.search(rf"^\[{CONTACT_TAG}\]=(.*)$", notes, flags=re.MULTILINE)
+    return bool(match and match.group(1).strip() == "1")
+
+
+def _set_lead_contacted(lead, contacted):
+    notes = lead.notes or ""
+    pattern = rf"^\[{CONTACT_TAG}\]=.*$"
+    line = f"[{CONTACT_TAG}]={'1' if contacted else '0'}"
+    if re.search(pattern, notes, flags=re.MULTILINE):
+        notes = re.sub(pattern, line, notes, flags=re.MULTILINE)
+    else:
+        notes = (notes.rstrip() + ("\n" if notes.rstrip() else "") + line).strip()
+    lead.notes = notes
+
+
+@app.context_processor
+def _pipeline_contact_context():
+    return {"lead_contacted": _lead_contacted}
+
+
+@app.route("/lead/<int:lead_id>/toggle-contacted", methods=["POST"])
+@crm.login_required
+def lead_toggle_contacted(lead_id):
+    lead = crm.visible_leads_query().filter_by(id=lead_id).first_or_404()
+    if lead.stage not in CONTACT_STAGES:
+        flash("O marcador de contato está disponível somente nas quatro primeiras etapas do Pipeline.", "warning")
+        return redirect(request.referrer or url_for("pipeline"))
+
+    new_value = not _lead_contacted(lead)
+    _set_lead_contacted(lead, new_value)
+    crm.db.session.add(crm.AutomationLog(
+        lead_id=lead.id,
+        action="Marcador de contato atualizado",
+        detail="Lead marcado como contatado." if new_value else "Marcação de contato removida.",
+    ))
+    crm.db.session.commit()
+    return redirect(request.referrer or url_for("pipeline"))
 
 
 def _commercial_auto_stage(lead, preserve=True):
