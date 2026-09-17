@@ -8,7 +8,7 @@ services:
     name: crm-cervejeiros
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn crm_entry:app
+    startCommand: gunicorn --workers 2 --threads 4 --timeout 120 crm_entry:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
