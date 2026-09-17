@@ -1,5 +1,7 @@
 from datetime import date
 
+from flask import jsonify
+
 import dre_categories_patch as categories
 
 app = categories.app
@@ -127,11 +129,12 @@ def delete_account_month(account_id):
 
         core.db.session.delete(account)
         core.db.session.commit()
-    except Exception:
+    except Exception as exc:
         core.db.session.rollback()
-        return core.jsonify({"ok": False, "error": "Não foi possível excluir esta conta."}), 500
+        app.logger.exception("Erro ao excluir conta somente da competência %s", account_id)
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
-    return core.jsonify(
+    return jsonify(
         {
             "ok": True,
             "message": "Conta excluída somente desta competência.",
