@@ -11,6 +11,11 @@
 (function(){
   if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/service-worker.js').catch(()=>{})}
 
+  var crmDirty=false;
+  document.addEventListener('input',function(e){if(e.target.closest('form')) crmDirty=true;});
+  document.addEventListener('change',function(e){if(e.target.closest('form')) crmDirty=true;});
+  document.addEventListener('submit',function(){crmDirty=false;},true);
+
   function addRescheduleControls(root){
     (root||document).querySelectorAll('form input[name="task_id"]').forEach(function(input){
       var taskId=input.value;
@@ -28,12 +33,10 @@
   addRescheduleControls(document);
 
   var refreshing=false;
-  var safePaths=['/','/dashboard','/pipeline','/leads','/agenda','/reports'];
   function canRefresh(){
-    if(document.hidden || refreshing) return false;
+    if(document.hidden || refreshing || crmDirty) return false;
     var active=document.activeElement;
     if(active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return false;
-    if(document.querySelector('form :invalid:focus')) return false;
     return true;
   }
   async function silentRefresh(){
