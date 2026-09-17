@@ -34,6 +34,7 @@
         <input type="hidden" name="stage" value="1ª Reunião Realizada">
         <button class="btn primary" type="submit" style="width:100%">✅ 1ª reunião realizada</button>
       </form>
+      <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
     {% elif l.stage == '1ª Reunião Realizada' %}
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
     {% elif l.stage == '2ª Reunião Agendada' %}
