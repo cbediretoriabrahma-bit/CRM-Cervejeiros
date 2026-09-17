@@ -40,8 +40,21 @@ def _conflict(local_dt, current_task_id):
         other_start = other.due_at
         other_end = other_start + timedelta(hours=1)
         if new_start < other_end and other_start < new_end:
-            return True
-    return False
+            return other
+    return None
+
+
+def _conflict_message(conflict_task, requested_local):
+    conflict_local = _local_dt(conflict_task.due_at)
+    conflict_lead = crm.db.session.get(crm.Lead, conflict_task.lead_id) if conflict_task.lead_id else None
+    conflict_name = conflict_lead.name if conflict_lead else "outro lead"
+    requested_label = _fmt(requested_local)
+    occupied_label = _fmt(conflict_local)
+    return (
+        f"Reagendamento não realizado. O horário solicitado ({requested_label}) está indisponível. "
+        f"Já existe uma reunião com {conflict_name} marcada para {occupied_label}. "
+        "Escolha outro horário disponível."
+    )
 
 
 @crm.app.route("/meeting/<int:task_id>/reschedule", methods=["POST"])
@@ -82,8 +95,9 @@ def meeting_reschedule(task_id):
         flash("A 1ª reunião deve ser reagendada entre 09:00 e 20:00.", "warning")
         return redirect(url_for("lead_detail", lead_id=lead.id))
 
-    if _conflict(new_local, task.id):
-        flash("Esse horário já está ocupado por outra reunião. Escolha outro horário.", "warning")
+    conflict_task = _conflict(new_local, task.id)
+    if conflict_task:
+        flash(_conflict_message(conflict_task, new_local), "warning")
         return redirect(url_for("lead_detail", lead_id=lead.id))
 
     old_local = _local_dt(task.due_at)
