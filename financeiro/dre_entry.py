@@ -14,6 +14,10 @@ import multi_store_filter_patch  # noqa: F401,E402
 # Classificações detalhadas do DRE e separação das despesas pessoais.
 import dre_categories_patch  # noqa: F401,E402
 
+# Exclusão de uma conta somente na competência selecionada, sem cancelar
+# a recorrência nem apagar os demais meses.
+import monthly_delete_patch  # noqa: F401,E402
+
 # Os atalhos rápidos de Categoria e Recorrência foram retirados do painel
 # após a classificação inicial das contas, deixando a tela mais leve.
 # As rotas/consultas de edição rápida também deixam de ser carregadas.
