@@ -62,14 +62,35 @@ def _meeting_number(task):
     return 2 if _is_second_meeting(task) else 1
 
 
+def _task_matches_current_pipeline_stage(task):
+    """Só considera agendada a reunião que ainda corresponde à etapa atual do lead.
+
+    Isso evita que uma tarefa antiga continue no relatório depois que o lead
+    voltou para Lead Quente ou foi movimentado para outra fase do Pipeline.
+    """
+    if not task or (task.status or "").strip().lower() != "pendente":
+        return False
+
+    lead = crm.Lead.query.filter_by(id=task.lead_id).first()
+    if not lead:
+        return False
+
+    if _is_second_meeting(task):
+        return lead.stage == "2ª Reunião Agendada"
+    return lead.stage == "Reunião Agendada"
+
+
 def _dashboard_meetings():
-    return (
+    # Busca um conjunto maior e depois filtra pela etapa atual do Pipeline.
+    # Assim o relatório e o Pipeline sempre exibem a mesma situação comercial.
+    pending = (
         _visible_meeting_query()
         .filter(crm.Task.status == "Pendente")
         .order_by(crm.Task.due_at.asc())
-        .limit(30)
+        .limit(100)
         .all()
     )
+    return [t for t in pending if _task_matches_current_pipeline_stage(t)][:30]
 
 
 def _dashboard_first_meetings():
