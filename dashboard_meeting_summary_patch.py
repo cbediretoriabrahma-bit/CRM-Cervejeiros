@@ -67,3 +67,8 @@ def _meeting_qualification(lead):
 @crm.app.context_processor
 def _dashboard_meeting_summary_context():
     return {"meeting_qualification": _meeting_qualification}
+
+
+# Carrega depois dos helpers de reunião para que o Dashboard use a agenda
+# sincronizada com a etapa atual do Pipeline.
+import dashboard_calendar_patch  # noqa: F401,E402
