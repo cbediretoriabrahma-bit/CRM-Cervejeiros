@@ -15,6 +15,20 @@
       <span>{% if lead_contacted(l) %}Contatado{% else %}Contato{% endif %}</span>
     </div>
 
+    {% set msg = namespace(sent=false) %}
+    {% for interaction in l.interactions %}
+      {% if interaction.direction == 'out' and interaction.channel in ['WhatsApp','Instagram','Pipeline'] %}
+        {% set msg.sent = true %}
+      {% endif %}
+    {% endfor %}
+    <div class="contact-marker-row">
+      <button class="contact-dot {% if msg.sent %}contacted{% endif %}" type="button"
+              onclick="markPipelineMessageSent(this, {{l.id}})"
+              title="{% if msg.sent %}Mensagem enviada ao cliente{% else %}Clique para marcar que a mensagem foi enviada{% endif %}"
+              aria-label="Marcar mensagem enviada"></button>
+      <span>Mensagem enviada</span>
+    </div>
+
     <details style="margin:8px 0 10px">
       <summary style="cursor:pointer;list-style:none;background:#facc15;color:#3f2d00;border:1px solid #eab308;border-radius:8px;padding:9px 10px;text-align:center;font-weight:800;box-shadow:0 1px 2px rgba(0,0,0,.08)">📅 Agendar uma reunião</summary>
       <form method="post" action="{{url_for('lead_schedule_first_meeting',lead_id=l.id)}}" style="display:grid;gap:7px;margin-top:8px;padding:9px;background:#fff8d6;border:1px solid #f3d65c;border-radius:8px">
@@ -132,4 +146,28 @@
 </div>
 {% endfor %}
 </div>
+
+<script>
+async function markPipelineMessageSent(button, leadId) {
+  if (button.classList.contains('contacted')) return;
+  button.disabled = true;
+  const data = new URLSearchParams();
+  data.set('channel', 'Pipeline');
+  data.set('message', '[Pipeline] Mensagem enviada ao cliente.');
+  try {
+    const response = await fetch(`/lead/${leadId}/interaction`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: data.toString(),
+      credentials: 'same-origin'
+    });
+    if (!response.ok) throw new Error('Falha ao registrar');
+    button.classList.add('contacted');
+    button.title = 'Mensagem enviada ao cliente';
+  } catch (error) {
+    button.disabled = false;
+    alert('Não foi possível marcar a mensagem como enviada. Tente novamente.');
+  }
+}
+</script>
 {% endblock %}
