@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% block title %}Estatísticas • CRM Cervejeiros{% endblock %}
+{% block content %}
+<style>
+.stats-page{display:grid;gap:18px}.stats-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}.stats-head h1{margin:0}.stats-head p{margin:5px 0 0;color:#667085}.stats-panel{background:#fff;border:1px solid #e7eaf0;border-radius:16px;padding:16px;box-shadow:0 4px 16px rgba(16,24,40,.05)}.stats-filter{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:10px;align-items:end}.stats-filter label{font-size:12px;font-weight:700;color:#475467}.stats-filter select,.stats-filter input{width:100%;box-sizing:border-box}.stats-filter .actions{display:flex;gap:8px}.metric-grid{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr));gap:12px}.metric{background:linear-gradient(180deg,#fff,#fbfcff);border:1px solid #e5e9f0;border-radius:15px;padding:15px;min-height:94px}.metric .label{font-size:12px;color:#667085;font-weight:700}.metric .value{font-size:30px;font-weight:900;line-height:1.05;margin-top:9px;color:#15224a}.metric .sub{font-size:12px;color:#667085;margin-top:6px}.metric.strong{border-color:#d9b350;background:linear-gradient(180deg,#fffdf7,#fff9e8)}.metric.good{border-color:#8ad0a8;background:linear-gradient(180deg,#fbfffc,#effbf4)}.metric.warn{border-color:#e8b0b0;background:linear-gradient(180deg,#fffafa,#fff2f2)}.two-col{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}.chart-wrap{height:300px}.funnel{display:grid;gap:10px}.funnel-row{display:grid;grid-template-columns:180px 1fr 80px 75px;gap:10px;align-items:center}.funnel-label{font-size:13px;font-weight:700;color:#344054}.bar-bg{height:14px;border-radius:999px;background:#eef1f6;overflow:hidden}.bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#1f3d7a,#c8202f)}.funnel-count,.funnel-rate{text-align:right;font-weight:800}.table-wrap{overflow:auto}.stats-table{width:100%;border-collapse:collapse;min-width:650px}.stats-table th,.stats-table td{padding:10px 9px;border-bottom:1px solid #edf0f4;text-align:left;font-size:13px}.stats-table th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#667085}.muted{color:#667085}.badge-soft{display:inline-block;border-radius:999px;padding:4px 9px;background:#f0f3f8;font-weight:800;font-size:12px}.note-box{background:#fff8df;border:1px solid #efd98f;border-radius:12px;padding:12px 14px;color:#6f5b16;font-size:13px}.mini-states{display:flex;gap:8px;flex-wrap:wrap}.mini-state{border:1px solid #e3e7ee;border-radius:999px;padding:6px 10px;font-size:12px;background:#fff}@media(max-width:1100px){.stats-filter{grid-template-columns:repeat(3,1fr)}.metric-grid{grid-template-columns:repeat(3,1fr)}.two-col{grid-template-columns:1fr}}@media(max-width:700px){.stats-filter{grid-template-columns:1fr 1fr}.metric-grid{grid-template-columns:1fr 1fr}.funnel-row{grid-template-columns:125px 1fr 55px 55px}.chart-wrap{height:250px}}@media(max-width:460px){.metric-grid{grid-template-columns:1fr}.stats-filter{grid-template-columns:1fr}.funnel-row{grid-template-columns:110px 1fr 48px 48px}.funnel-label{font-size:11px}}
+</style>
+
+<div class="stats-page">
+  <div class="stats-head">
+    <div>
+      <h1>📊 Estatísticas de Conversão</h1>
+      <p>Histórico permanente dos leads que entram no CRM, mesmo quando um lead é excluído do Pipeline.</p>
+    </div>
+    <span class="badge-soft">CERVEJEIROS • Inteligência Comercial</span>
+  </div>
+
+  <form class="stats-panel stats-filter" method="get">
+    <label>Período
+      <select name="period" onchange="this.form.submit()">
+        <option value="today" {% if period=='today' %}selected{% endif %}>Hoje</option>
+        <option value="7d" {% if period=='7d' %}selected{% endif %}>Últimos 7 dias</option>
+        <option value="month" {% if period=='month' %}selected{% endif %}>Mês atual</option>
+        <option value="all" {% if period=='all' %}selected{% endif %}>Todo o histórico</option>
+        <option value="custom" {% if period=='custom' %}selected{% endif %}>Personalizado</option>
+      </select>
+    </label>
+    <label>Data inicial
+      <input type="date" name="date_from" value="{{date_from}}">
+    </label>
+    <label>Data final
+      <input type="date" name="date_to" value="{{date_to}}">
+    </label>
+    <label>Origem
+      <select name="source">
+        <option value="">Todas</option>
+        {% for item in filter_sources %}<option value="{{item}}" {% if selected_source==item %}selected{% endif %}>{{item}}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Estado
+      <select name="state">
+        <option value="">Todos</option>
+        {% for item in filter_states %}<option value="{{item}}" {% if selected_state==item %}selected{% endif %}>{{item}}</option>{% endfor %}
+      </select>
+    </label>
+    {% if session.get('role') in ['admin','manager'] %}
+    <label>Consultor
+      <select name="owner_id">
+        <option value="">Todos</option>
+        {% for u in users %}<option value="{{u.id}}" {% if selected_owner==u.id|string %}selected{% endif %}>{{u.name}}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <div class="actions">
+      <button class="btn primary" type="submit">Aplicar</button>
+      <a class="btn" href="{{url_for('statistics_panel')}}">Limpar</a>
+    </div>
+  </form>
+
+  <div class="metric-grid">
+    <div class="metric strong"><div class="label">LEADS RECEBIDOS</div><div class="value">{{counts.received}}</div><div class="sub">{{today_count}} novos hoje</div></div>
+    <div class="metric"><div class="label">LEADS CONTATADOS</div><div class="value">{{counts.contacted}}</div><div class="sub">{{contact_conversion}}% dos recebidos</div></div>
+    <div class="metric"><div class="label">REUNIÕES AGENDADAS</div><div class="value">{{counts.meeting1_scheduled}}</div><div class="sub">1ª reunião comercial</div></div>
+    <div class="metric good"><div class="label">CONVERSÃO LEAD → REUNIÃO</div><div class="value">{{meeting_conversion}}%</div><div class="sub">sobre os leads recebidos</div></div>
+    <div class="metric good"><div class="label">CONVERSÃO LEAD → VENDA</div><div class="value">{{sales_conversion}}%</div><div class="sub">{{counts.closed}} fechados</div></div>
+    <div class="metric"><div class="label">1ª REUNIÃO REALIZADA</div><div class="value">{{counts.meeting1_done}}</div><div class="sub">histórico acumulado no período</div></div>
+    <div class="metric"><div class="label">2ª REUNIÃO AGENDADA</div><div class="value">{{counts.meeting2_scheduled}}</div><div class="sub">avanço comercial</div></div>
+    <div class="metric"><div class="label">CONTRATOS ENVIADOS</div><div class="value">{{counts.contract_sent}}</div><div class="sub">propostas em fechamento</div></div>
+    <div class="metric warn"><div class="label">PERDIDOS</div><div class="value">{{counts.lost}}</div><div class="sub">registrados no período</div></div>
+    <div class="metric"><div class="label">EXCLUÍDOS DO CRM</div><div class="value">{{counts.deleted}}</div><div class="sub">continuam preservados nas estatísticas</div></div>
+  </div>
+
+  <div class="two-col">
+    <section class="stats-panel">
+      <h3 style="margin-top:0">Funil de conversão</h3>
+      <div class="funnel">
+        {% for item in funnel_rows %}
+        <div class="funnel-row">
+          <div class="funnel-label">{{item.label}}</div>
+          <div class="bar-bg"><div class="bar-fill" style="width:{{item.rate}}%"></div></div>
+          <div class="funnel-count">{{item.count}}</div>
+          <div class="funnel-rate">{{item.rate}}%</div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="stats-panel">
+      <h3 style="margin-top:0">Entrada de leads</h3>
+      <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
+    </section>
+  </div>
+
+  <div class="two-col">
+    <section class="stats-panel">
+      <h3 style="margin-top:0">Origem dos leads</h3>
+      <div class="chart-wrap"><canvas id="sourceChart"></canvas></div>
+    </section>
+    <section class="stats-panel">
+      <h3 style="margin-top:0">Conversão por origem</h3>
+      <div class="table-wrap">
+        <table class="stats-table">
+          <thead><tr><th>Origem</th><th>Leads</th><th>Reuniões</th><th>Conv. reunião</th><th>Fechados</th><th>Conv. venda</th></tr></thead>
+          <tbody>
+          {% for item in source_rows %}
+            <tr><td><b>{{item.name}}</b></td><td>{{item.total}}</td><td>{{item.meeting}}</td><td>{{item.meeting_rate}}%</td><td>{{item.closed}}</td><td><b>{{item.close_rate}}%</b></td></tr>
+          {% else %}<tr><td colspan="6" class="muted">Nenhum lead encontrado para os filtros selecionados.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  {% if session.get('role') in ['admin','manager'] %}
+  <section class="stats-panel">
+    <h3 style="margin-top:0">Conversão por consultor</h3>
+    <div class="table-wrap">
+      <table class="stats-table">
+        <thead><tr><th>Consultor</th><th>Leads</th><th>Reuniões</th><th>Conv. reunião</th><th>Fechados</th><th>Conv. venda</th></tr></thead>
+        <tbody>
+        {% for item in owner_rows %}
+          <tr><td><b>{{item.name}}</b></td><td>{{item.total}}</td><td>{{item.meeting}}</td><td>{{item.meeting_rate}}%</td><td>{{item.closed}}</td><td><b>{{item.close_rate}}%</b></td></tr>
+        {% else %}<tr><td colspan="6" class="muted">Sem dados no período.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="stats-panel">
+    <h3 style="margin-top:0">Distribuição por estado</h3>
+    <div class="mini-states">
+      {% for uf, qty in state_rows %}<span class="mini-state"><b>{{uf}}</b> · {{qty}} lead{% if qty != 1 %}s{% endif %}</span>{% else %}<span class="muted">Sem dados no período.</span>{% endfor %}
+    </div>
+  </section>
+
+  <div class="note-box"><b>Histórico protegido:</b> excluir um lead do Pipeline não reduz o total de leads recebidos nem apaga sua participação nas taxas de conversão. O registro estatístico fica em uma tabela separada do cadastro operacional.</div>
+</div>
+
+<script>
+(function(){
+  const dailyLabels={{daily_labels|tojson}};
+  const dailyValues={{daily_values|tojson}};
+  const sourceLabels={{source_labels|tojson}};
+  const sourceValues={{source_values|tojson}};
+
+  const daily=document.getElementById('dailyChart');
+  if(daily && window.Chart){
+    new Chart(daily,{type:'line',data:{labels:dailyLabels,datasets:[{label:'Leads recebidos',data:dailyValues,tension:.3,fill:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+  }
+
+  const source=document.getElementById('sourceChart');
+  if(source && window.Chart){
+    new Chart(source,{type:'doughnut',data:{labels:sourceLabels,datasets:[{data:sourceValues}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+  }
+})();
+</script>
+{% endblock %}
