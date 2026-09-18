@@ -105,6 +105,20 @@
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
 
     {% elif l.stage == '2ª Reunião Agendada' %}
+      {% set material_second = namespace(sent=false) %}
+      {% for interaction in l.interactions %}
+        {% if interaction.direction == 'out' and interaction.channel == 'Pipeline Material 2' %}
+          {% set material_second.sent = true %}
+        {% endif %}
+      {% endfor %}
+      <div class="contact-marker-row" style="justify-content:flex-start!important;margin-bottom:8px">
+        <button class="contact-dot {% if material_second.sent %}contacted{% endif %}" type="button"
+                onclick="markPipelineFlag(this, {{l.id}}, 'Pipeline Material 2', '[Pipeline] Material enviado após a 2ª reunião.')"
+                title="{% if material_second.sent %}Material marcado como enviado{% else %}Clique depois de enviar o material ao cliente{% endif %}"
+                aria-label="Marcar material enviado na segunda reunião"></button>
+        <span>Material enviado</span>
+      </div>
+
       {% set contract = namespace(sent=false) %}
       {% for interaction in l.interactions %}
         {% if interaction.direction == 'out' and interaction.channel == 'Pipeline Contract' %}
