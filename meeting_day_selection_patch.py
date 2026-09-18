@@ -2,14 +2,16 @@
 
 Fluxo:
 1. Lead aceita a reunião.
-2. CRM oferece próximos dias úteis (segunda a sexta) que tenham pelo menos
-   dois horários livres pela manhã e dois pela tarde.
+2. CRM oferece os próximos 7 dias úteis (segunda a sexta) que tenham pelo
+   menos um horário livre entre 11:00 e 15:00.
 3. Lead escolhe o dia.
-4. CRM oferece 4 horários: 2 pela manhã e 2 pela tarde, entre 09:00 e 20:00.
+4. CRM oferece somente os horários realmente livres, de 1 em 1 hora:
+   11:00, 12:00, 13:00, 14:00 e 15:00.
 5. Antes de confirmar, a disponibilidade é conferida novamente.
 
 Horários ocupados nunca são oferecidos. Se um horário for ocupado entre a
-exibição e a escolha, o CRM atualiza as opções sem travar a conversa.
+exibição e a escolha, o CRM atualiza as opções sem travar a conversa. Dias
+sem nenhum horário livre também não aparecem para o lead.
 """
 import re
 from datetime import datetime, timedelta
@@ -33,9 +35,10 @@ def _format_day(day):
 
 
 def _free_slots_for_day(lead, day):
+    """Retorna apenas horários livres entre 11:00 e 15:00, de hora em hora."""
     now = datetime.now(TZ)
     slots = []
-    for hour in range(9, 21):  # 09:00 a 20:00, inclusive
+    for hour in range(11, 16):  # 11:00, 12:00, 13:00, 14:00 e 15:00
         slot = datetime.combine(day, datetime.min.time(), tzinfo=TZ).replace(hour=hour)
         if slot <= now + timedelta(hours=2):
             continue
@@ -44,21 +47,11 @@ def _free_slots_for_day(lead, day):
     return slots
 
 
-def _balanced_slots_for_day(lead, day):
-    """Seleciona 2 horários de manhã e 2 à tarde, todos realmente livres."""
-    free = _free_slots_for_day(lead, day)
-    morning = [slot for slot in free if 9 <= slot.hour < 12]
-    afternoon = [slot for slot in free if 13 <= slot.hour <= 20]
-    if len(morning) < 2 or len(afternoon) < 2:
-        return []
-    return morning[:2] + afternoon[:2]
-
-
 def _available_days(lead, refresh=False):
-    """Retorna até 5 dias úteis com 2 horários de manhã e 2 à tarde livres."""
+    """Retorna até 7 dias úteis que tenham pelo menos 1 horário livre."""
     if not refresh:
         stored = []
-        for i in range(1, 6):
+        for i in range(1, 8):
             raw = sc._tag_value(lead, f"Q_DAY_{i}")
             if not raw:
                 break
@@ -67,7 +60,7 @@ def _available_days(lead, refresh=False):
             except Exception:
                 stored = []
                 break
-            if len(_balanced_slots_for_day(lead, day)) < 4:
+            if len(_free_slots_for_day(lead, day)) < 1:
                 stored = []
                 break
             stored.append(day)
@@ -76,16 +69,16 @@ def _available_days(lead, refresh=False):
 
     now = datetime.now(TZ)
     days = []
-    for add_day in range(0, 30):
+    for add_day in range(0, 45):
         day = (now + timedelta(days=add_day)).date()
         if day.weekday() >= 5:
             continue
-        if len(_balanced_slots_for_day(lead, day)) == 4:
+        if _free_slots_for_day(lead, day):
             days.append(day)
-        if len(days) == 5:
+        if len(days) == 7:
             break
 
-    for i in range(1, 6):
+    for i in range(1, 8):
         value = days[i - 1].isoformat() if i <= len(days) else ""
         sc._set_tag(lead, f"Q_DAY_{i}", value)
     return days
@@ -97,7 +90,7 @@ def _select_day(lead, text):
         return None
     raw = _norm(text)
 
-    m = re.fullmatch(r"[1-5]", raw)
+    m = re.fullmatch(r"[1-7]", raw)
     if m:
         idx = int(raw) - 1
         if idx < len(days):
@@ -116,8 +109,8 @@ def _select_day(lead, text):
 
 
 def _store_time_options(lead, day):
-    slots = _balanced_slots_for_day(lead, day)
-    for i in range(1, 5):
+    slots = _free_slots_for_day(lead, day)
+    for i in range(1, 6):
         value = slots[i - 1].isoformat() if i <= len(slots) else ""
         sc._set_tag(lead, f"Q_SLOT_{i}", value)
     return slots
@@ -141,7 +134,7 @@ def _find_time(lead, text):
     slots = _store_time_options(lead, day)
     raw = _norm(text)
 
-    m = re.fullmatch(r"[1-4]", raw)
+    m = re.fullmatch(r"[1-5]", raw)
     if m:
         idx = int(raw) - 1
         return slots[idx] if idx < len(slots) else None
@@ -165,6 +158,7 @@ def _schedule_selected_time(lead, text):
     if slot is None:
         return False
 
+    # Revalida no instante da confirmação para impedir agendamento duplicado.
     if not sc._slot_is_free(slot, lead.owner_id):
         day = _selected_day(lead)
         if day:
@@ -194,16 +188,18 @@ def _day_prompt(lead):
     days = _available_days(lead, refresh=True)
     if not days:
         return (
-            "No momento não encontrei dias úteis com disponibilidade de manhã e à tarde. "
+            "No momento não encontrei dias úteis com horários livres entre 11:00 e 15:00. "
             "Nosso consultor entrará em contato para combinar a reunião."
         )
+
     options = [
         {"id": str(i + 1), "title": _format_day(day)[:24]}
         for i, day in enumerate(days)
     ]
     return fm._list_marker(
         "📅 *Qual dia fica melhor para sua reunião?*\n\n"
-        "Escolha um dia disponível de *segunda a sexta-feira*:",
+        "Escolha entre os *próximos 7 dias úteis disponíveis* "
+        "(segunda a sexta-feira):",
         "Escolher dia",
         options,
     )
@@ -215,24 +211,23 @@ def _time_prompt(lead, refresh=True):
         return _day_prompt(lead)
 
     slots = _store_time_options(lead, day)
-    if len(slots) < 4:
+    if not slots:
         sc._set_tag(lead, "Q_MEETING_DAY", "")
         return (
-            "⚠️ *Esse dia não possui mais duas opções pela manhã e duas à tarde.*\n\n" +
+            "⚠️ *Esse dia não possui mais horários livres entre 11:00 e 15:00.*\n\n" +
             _day_prompt(lead)
         )
 
+    options = [
+        {"id": str(i + 1), "title": slot.strftime("%H:%M")}
+        for i, slot in enumerate(slots)
+    ]
     return fm._list_marker(
-        f"⏰ *Perfeito! Para {_format_day(day)}, escolha um horário:*\n\n"
-        "☀️ *Manhã:* 2 opções\n"
-        "🌇 *Tarde:* 2 opções",
+        f"⏰ *Perfeito! Para {_format_day(day)}, escolha um horário disponível:*\n\n"
+        "As reuniões duram *1 hora*. O CRM mostra somente os horários livres "
+        "entre *11:00 e 15:00*.",
         "Escolher horário",
-        [
-            {"id": "1", "title": f"Manhã • {slots[0].strftime('%H:%M')}"},
-            {"id": "2", "title": f"Manhã • {slots[1].strftime('%H:%M')}"},
-            {"id": "3", "title": f"Tarde • {slots[2].strftime('%H:%M')}"},
-            {"id": "4", "title": f"Tarde • {slots[3].strftime('%H:%M')}"},
-        ],
+        options,
     )
 
 
