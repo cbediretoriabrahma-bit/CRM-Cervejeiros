@@ -67,3 +67,7 @@ def _formatted_instagram_reply(lead):
 
 p._reply_for_message = _formatted_whatsapp_reply
 p._reply_for_instagram = _formatted_instagram_reply
+
+# Registra o painel estatístico e o histórico independente de leads.
+# O módulo é carregado aqui porque este patch já faz parte da inicialização do CRM.
+import statistics_patch  # noqa: E402,F401
