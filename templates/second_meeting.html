@@ -17,7 +17,7 @@
 {% else %}
 <h2>2. Escolha o horário</h2>
 <p><b>Dia selecionado:</b> {{selected_day_label}}</p>
-<p>Escolha uma das 2 opções disponíveis. Antes de confirmar, o CRM verifica novamente se nenhuma 1ª ou 2ª reunião ocupou esse horário.</p>
+<p>Escolha um dos horários livres abaixo. O CRM mostra opções de 1 em 1 hora, das <b>11:00 às 17:00</b>, e verifica novamente se nenhuma 1ª ou 2ª reunião ocupou o horário antes da confirmação.</p>
 {% if options %}
 <form method="post">
 <input type="hidden" name="action" value="confirm_slot">
