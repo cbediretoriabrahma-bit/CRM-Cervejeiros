@@ -1,7 +1,8 @@
 """Calendário visual de disponibilidade de reuniões no Dashboard.
 
 Mostra somente dias, horários e ocupação. Não expõe nomes dos leads.
-Também mantém os relatórios sincronizados com a etapa atual do Pipeline.
+Os relatórios exibem todas as reuniões pendentes registradas no CRM,
+independentemente da etapa atual do lead no Pipeline.
 """
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
@@ -17,7 +18,11 @@ WEEKDAYS_SHORT = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"]
 
 
 def _valid_pending_meetings():
-    """Retorna somente reuniões pendentes que ainda correspondem à etapa atual do lead."""
+    """Retorna todas as reuniões pendentes registradas para leads existentes.
+
+    A reunião não desaparece do Dashboard apenas porque o lead foi movido de
+    coluna no Pipeline. Fechado e Perdido ficam fora da agenda ativa.
+    """
     tasks = (
         mr._visible_meeting_query()
         .filter(crm.Task.status == "Pendente")
@@ -29,18 +34,15 @@ def _valid_pending_meetings():
         lead = task.lead
         if not lead:
             continue
-        if mr._is_second_meeting(task):
-            if lead.stage != "2ª Reunião Agendada":
-                continue
-        else:
-            if lead.stage != "Reunião Agendada":
-                continue
+        if (lead.stage or "").strip() in {"Fechado", "Perdido"}:
+            continue
         valid.append(task)
     return valid
 
 
 def _dashboard_meetings_synced():
-    return _valid_pending_meetings()[:30]
+    # Sem limite artificial: mostra todas as reuniões pendentes.
+    return _valid_pending_meetings()
 
 
 def _dashboard_first_meetings_synced():
@@ -114,8 +116,6 @@ def _meeting_availability_calendar(count=10):
 
 @crm.app.context_processor
 def _dashboard_calendar_context():
-    # Estes nomes substituem os helpers antigos no template e impedem que
-    # reuniões antigas de leads que voltaram no Pipeline continuem aparecendo.
     return {
         "dashboard_meetings": _dashboard_meetings_synced,
         "dashboard_first_meetings": _dashboard_first_meetings_synced,
