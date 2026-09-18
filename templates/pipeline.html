@@ -74,6 +74,20 @@
         <span>Material enviado</span>
       </div>
 
+      {% set contract_first = namespace(sent=false) %}
+      {% for interaction in l.interactions %}
+        {% if interaction.direction == 'out' and interaction.channel == 'Pipeline Contract' %}
+          {% set contract_first.sent = true %}
+        {% endif %}
+      {% endfor %}
+      <div class="contact-marker-row" style="justify-content:flex-start!important;margin-bottom:8px">
+        <button class="contact-dot {% if contract_first.sent %}contacted{% endif %}" type="button"
+                onclick="markPipelineFlag(this, {{l.id}}, 'Pipeline Contract', '[Pipeline] Contrato enviado ao cliente.')"
+                title="{% if contract_first.sent %}Contrato marcado como enviado{% else %}Clique depois de enviar o contrato ao cliente{% endif %}"
+                aria-label="Marcar contrato enviado"></button>
+        <span>Contrato enviado</span>
+      </div>
+
       {% set r1 = namespace(task=None) %}
       {% for t in lead_first_meetings(l.id) %}
         {% if r1.task is none %}{% set r1.task = t %}{% endif %}
