@@ -53,6 +53,65 @@ def _channel_status(lead):
     }
 
 
+# ---------------------------------------------------------------------------
+# Marcadores manuais do Pipeline
+# ---------------------------------------------------------------------------
+# O endpoint original /lead/<id>/interaction continua funcionando normalmente
+# para os demais canais. Quando o canal começa com "Pipeline", ele passa a agir
+# como um verdadeiro toggle: primeiro clique cria a marcação; segundo clique
+# remove a marcação. Isso permite clicar e desclicar sem criar duplicidades.
+_original_lead_interaction = app.view_functions.get("lead_interaction")
+
+if _original_lead_interaction is not None:
+    @crm.login_required
+    def _lead_interaction_with_pipeline_toggle(lead_id):
+        channel = (request.form.get("channel") or "").strip()
+        if not channel.startswith("Pipeline"):
+            return _original_lead_interaction(lead_id)
+
+        lead = crm.visible_leads_query().filter_by(id=lead_id).first_or_404()
+        message = (request.form.get("message") or "").strip()
+
+        existing = crm.Interaction.query.filter_by(
+            lead_id=lead.id,
+            direction="out",
+            channel=channel,
+        ).all()
+
+        if existing:
+            for row in existing:
+                crm.db.session.delete(row)
+            crm.db.session.add(crm.AutomationLog(
+                lead_id=lead.id,
+                action="Marcador do Pipeline desmarcado",
+                detail=f"Marcação removida: {channel}.",
+            ))
+            crm.db.session.commit()
+            return "unmarked", 200
+
+        if not message:
+            return "missing-message", 400
+
+        crm.db.session.add(crm.Interaction(
+            lead_id=lead.id,
+            user_id=None,
+            direction="out",
+            channel=channel,
+            message=message,
+            ai_generated=False,
+        ))
+        lead.last_contact = datetime.utcnow()
+        crm.db.session.add(crm.AutomationLog(
+            lead_id=lead.id,
+            action="Marcador do Pipeline marcado",
+            detail=f"Marcação registrada: {channel}.",
+        ))
+        crm.db.session.commit()
+        return "marked", 200
+
+    app.view_functions["lead_interaction"] = _lead_interaction_with_pipeline_toggle
+
+
 @app.route("/lead/<int:lead_id>/contact-outreach", methods=["POST"])
 @crm.login_required
 def lead_contact_outreach(lead_id):
@@ -155,6 +214,65 @@ def _outreach_html(lead):
   </form>
 </section>
 '''
+
+
+@app.after_request
+def _inject_pipeline_marker_toggle(response):
+    """Substitui no Pipeline o comportamento antigo (somente marcar) por toggle."""
+    try:
+        if request.method != "GET" or request.path.rstrip("/") != "/pipeline":
+            return response
+        if response.status_code != 200 or not response.content_type.startswith("text/html"):
+            return response
+
+        html = response.get_data(as_text=True)
+        if "crm-pipeline-toggle-fix" in html:
+            return response
+
+        script = r'''
+<script id="crm-pipeline-toggle-fix">
+window.markPipelineFlag = async function(button, leadId, channel, message) {
+  if (!button || button.disabled) return;
+  button.disabled = true;
+
+  const data = new URLSearchParams();
+  data.set('channel', channel);
+  data.set('message', message);
+
+  try {
+    const response = await fetch(`/lead/${leadId}/interaction`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: data.toString(),
+      credentials: 'same-origin'
+    });
+
+    if (!response.ok) throw new Error('Falha ao atualizar marcação');
+    const state = (await response.text()).trim();
+    const marked = state === 'marked';
+
+    button.classList.toggle('contacted', marked);
+    button.title = marked
+      ? 'Marcado — clique novamente para desmarcar'
+      : 'Desmarcado — clique para marcar';
+    button.setAttribute('aria-pressed', marked ? 'true' : 'false');
+  } catch (error) {
+    alert('Não foi possível atualizar a marcação. Tente novamente.');
+  } finally {
+    button.disabled = false;
+  }
+};
+</script>
+'''
+        if "</body>" in html:
+            html = html.replace("</body>", script + "</body>", 1)
+        else:
+            html += script
+        response.set_data(html)
+        response.headers['Content-Length'] = str(len(response.get_data()))
+    except Exception as exc:
+        app.logger.warning("Falha ao aplicar toggle dos marcadores do Pipeline: %s", exc)
+    return response
 
 
 @app.after_request
