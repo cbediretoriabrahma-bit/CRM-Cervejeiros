@@ -23,7 +23,7 @@
     {% endfor %}
     <div class="contact-marker-row">
       <button class="contact-dot {% if msg.sent %}contacted{% endif %}" type="button"
-              onclick="markPipelineMessageSent(this, {{l.id}})"
+              onclick="markPipelineFlag(this, {{l.id}}, 'Pipeline', '[Pipeline] Mensagem enviada ao cliente.')"
               title="{% if msg.sent %}Mensagem marcada como enviada{% else %}Clique depois de enviar a mensagem ao cliente{% endif %}"
               aria-label="Marcar mensagem enviada"></button>
       <span>Mensagem enviada</span>
@@ -60,6 +60,20 @@
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
 
     {% elif l.stage == '1ª Reunião Realizada' %}
+      {% set material = namespace(sent=false) %}
+      {% for interaction in l.interactions %}
+        {% if interaction.direction == 'out' and interaction.channel == 'Pipeline Material' %}
+          {% set material.sent = true %}
+        {% endif %}
+      {% endfor %}
+      <div class="contact-marker-row" style="justify-content:flex-start!important;margin-bottom:8px">
+        <button class="contact-dot {% if material.sent %}contacted{% endif %}" type="button"
+                onclick="markPipelineFlag(this, {{l.id}}, 'Pipeline Material', '[Pipeline] Material enviado ao cliente.')"
+                title="{% if material.sent %}Material marcado como enviado{% else %}Clique depois de enviar o material ao cliente{% endif %}"
+                aria-label="Marcar material enviado"></button>
+        <span>Material enviado</span>
+      </div>
+
       {% set r1 = namespace(task=None) %}
       {% for t in lead_first_meetings(l.id) %}
         {% if r1.task is none %}{% set r1.task = t %}{% endif %}
@@ -77,6 +91,20 @@
       <a class="btn" href="{{url_for('lead_second_meeting',lead_id=l.id)}}" style="display:block;text-align:center;margin-bottom:8px">📅 Agendar 2ª reunião</a>
 
     {% elif l.stage == '2ª Reunião Agendada' %}
+      {% set contract = namespace(sent=false) %}
+      {% for interaction in l.interactions %}
+        {% if interaction.direction == 'out' and interaction.channel == 'Pipeline Contract' %}
+          {% set contract.sent = true %}
+        {% endif %}
+      {% endfor %}
+      <div class="contact-marker-row" style="justify-content:flex-start!important;margin-bottom:8px">
+        <button class="contact-dot {% if contract.sent %}contacted{% endif %}" type="button"
+                onclick="markPipelineFlag(this, {{l.id}}, 'Pipeline Contract', '[Pipeline] Contrato enviado ao cliente.')"
+                title="{% if contract.sent %}Contrato marcado como enviado{% else %}Clique depois de enviar o contrato ao cliente{% endif %}"
+                aria-label="Marcar contrato enviado"></button>
+        <span>Contrato enviado</span>
+      </div>
+
       {% set ns2 = namespace(task=None) %}
       {% for t in lead_second_meetings(l.id) %}
         {% if ns2.task is none and t.status == 'Pendente' %}{% set ns2.task = t %}{% endif %}
@@ -148,12 +176,12 @@
 </div>
 
 <script>
-async function markPipelineMessageSent(button, leadId) {
+async function markPipelineFlag(button, leadId, channel, message) {
   if (button.classList.contains('contacted')) return;
   button.disabled = true;
   const data = new URLSearchParams();
-  data.set('channel', 'Pipeline');
-  data.set('message', '[Pipeline] Mensagem enviada ao cliente.');
+  data.set('channel', channel);
+  data.set('message', message);
   try {
     const response = await fetch(`/lead/${leadId}/interaction`, {
       method: 'POST',
@@ -163,10 +191,10 @@ async function markPipelineMessageSent(button, leadId) {
     });
     if (!response.ok) throw new Error('Falha ao registrar');
     button.classList.add('contacted');
-    button.title = 'Mensagem marcada como enviada';
+    button.title = 'Marcado com sucesso';
   } catch (error) {
     button.disabled = false;
-    alert('Não foi possível marcar a mensagem como enviada. Tente novamente.');
+    alert('Não foi possível registrar a marcação. Tente novamente.');
   }
 }
 </script>
