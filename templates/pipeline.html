@@ -17,14 +17,14 @@
 
     {% set msg = namespace(sent=false) %}
     {% for interaction in l.interactions %}
-      {% if interaction.direction == 'out' and interaction.channel in ['WhatsApp','Instagram','Pipeline'] %}
+      {% if interaction.direction == 'out' and interaction.channel == 'Pipeline' %}
         {% set msg.sent = true %}
       {% endif %}
     {% endfor %}
     <div class="contact-marker-row">
       <button class="contact-dot {% if msg.sent %}contacted{% endif %}" type="button"
               onclick="markPipelineMessageSent(this, {{l.id}})"
-              title="{% if msg.sent %}Mensagem enviada ao cliente{% else %}Clique para marcar que a mensagem foi enviada{% endif %}"
+              title="{% if msg.sent %}Mensagem marcada como enviada{% else %}Clique depois de enviar a mensagem ao cliente{% endif %}"
               aria-label="Marcar mensagem enviada"></button>
       <span>Mensagem enviada</span>
     </div>
@@ -163,7 +163,7 @@ async function markPipelineMessageSent(button, leadId) {
     });
     if (!response.ok) throw new Error('Falha ao registrar');
     button.classList.add('contacted');
-    button.title = 'Mensagem enviada ao cliente';
+    button.title = 'Mensagem marcada como enviada';
   } catch (error) {
     button.disabled = false;
     alert('Não foi possível marcar a mensagem como enviada. Tente novamente.');
