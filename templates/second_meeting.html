@@ -4,7 +4,7 @@
 <section class="panel">
 {% if not selected_day %}
 <h2>1. Escolha o dia</h2>
-<p>Selecione um dia útil. O sistema mostra apenas dias que ainda possuem horários livres e verifica todas as reuniões já marcadas, tanto 1ª quanto 2ª reunião.</p>
+<p>Selecione um dia útil. O sistema mostra os próximos <b>15 dias úteis disponíveis</b>, somente quando ainda possuem horários livres, e verifica todas as reuniões já marcadas, tanto 1ª quanto 2ª reunião.</p>
 {% if days %}
 <form method="post">
 <input type="hidden" name="action" value="select_day">
@@ -13,7 +13,7 @@
 </div>
 <button class="btn primary">Ver horários disponíveis</button>
 </form>
-{% else %}<p class="muted">Não encontramos dias úteis com horários disponíveis nos próximos 30 dias.</p>{% endif %}
+{% else %}<p class="muted">Não encontramos dias úteis com horários disponíveis na janela de busca.</p>{% endif %}
 {% else %}
 <h2>2. Escolha o horário</h2>
 <p><b>Dia selecionado:</b> {{selected_day_label}}</p>
