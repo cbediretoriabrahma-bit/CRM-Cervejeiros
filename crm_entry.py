@@ -154,16 +154,16 @@ def _second_meeting_slots_for_day(day):
 
 
 def _second_meeting_days():
-    """Mostra dias úteis que tenham pelo menos 1 horário livre entre 11h e 17h."""
+    """Mostra 15 dias úteis com pelo menos 1 horário livre entre 11h e 17h."""
     now = datetime.now(TZ)
     days = []
-    for add_day in range(0, 30):
+    for add_day in range(0, 90):
         day = (now + timedelta(days=add_day)).date()
         if day.weekday() >= 5:
             continue
         if len(_second_meeting_slots_for_day(day)) >= 1:
             days.append(day)
-        if len(days) == 5:
+        if len(days) == 15:
             break
     return days
 
