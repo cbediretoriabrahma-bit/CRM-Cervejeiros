@@ -42,7 +42,7 @@
     {% if l.stage == 'Reunião Agendada' %}
       {% set ns = namespace(task=None) %}
       {% for t in lead_first_meetings(l.id) %}
-        {% if ns.task is none and t.status == 'Pendente' %}{% set ns.task = t %}{% endif %}
+        {% if ns.task is none %}{% set ns.task = t %}{% endif %}
       {% endfor %}
       {% if ns.task %}
       <details style="margin-bottom:8px">
