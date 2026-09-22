@@ -13,6 +13,10 @@ Quando o lead já avançou para uma etapa posterior à reunião, qualquer tarefa
 reunião ainda marcada como pendente é encerrada automaticamente. Isso evita que
 uma reunião já realizada faça o lead voltar de etapa e impeça, por exemplo, o
 status "Contrato Enviado" de permanecer salvo.
+
+Movimentações manuais para uma etapa anterior também são respeitadas. Quando um
+lead volta de "2ª Reunião Agendada" para "Reunião Agendada", a tarefa pendente da
+2ª reunião é cancelada para que a sincronização automática não desfaça a escolha.
 """
 import re
 
@@ -92,6 +96,85 @@ def _is_second_meeting(task):
     return "2ª" in text or "2a" in text or "segunda" in text
 
 
+def _cancel_pending_meetings_for_manual_rollback(lead, target_stage):
+    """Cancela reuniões que pertencem a uma etapa posterior à escolhida manualmente."""
+    pending = crm.Task.query.filter_by(
+        lead_id=lead.id,
+        task_type="Reunião",
+        status="Pendente",
+    ).order_by(crm.Task.due_at.asc(), crm.Task.id.asc()).all()
+
+    if not pending:
+        return 0
+
+    # Ao voltar para a 1ª reunião (ou para a etapa logo após ela), a 2ª reunião
+    # pendente não pode continuar sendo fonte de verdade, senão o Pipeline volta
+    # automaticamente para "2ª Reunião Agendada".
+    cancel_second = target_stage in {
+        "Reunião Agendada",
+        "1ª Reunião Realizada",
+    }
+
+    # Se o usuário retroceder para uma etapa anterior às reuniões, nenhuma reunião
+    # pendente deve forçar o lead de volta para uma coluna de agenda.
+    cancel_all = target_stage in {
+        "Novo Lead",
+        "Em Qualificação",
+        "Qualificado",
+        "Lead Quente",
+    }
+
+    changed = 0
+    for meeting in pending:
+        if cancel_all or (cancel_second and _is_second_meeting(meeting)):
+            meeting.status = "Cancelada"
+            changed += 1
+
+    return changed
+
+
+# Correção pontual solicitada para os leads que já haviam sido movidos manualmente,
+# mas voltaram para a 2ª reunião por causa da antiga sincronização automática.
+@crm.app.before_request
+def _repair_requested_manual_rollbacks_once():
+    if crm.get_setting("manual_rollback_tabata_sobre_v1", "0") == "1":
+        return
+
+    requested_names = {"tabata", "sobre geladeiras"}
+    changed = 0
+
+    for lead in crm.Lead.query.order_by(crm.Lead.id).all():
+        name = (lead.name or "").strip().casefold()
+        if name not in requested_names:
+            continue
+        if (lead.stage or "").strip() != "2ª Reunião Agendada":
+            continue
+
+        cancelled = _cancel_pending_meetings_for_manual_rollback(
+            lead, "Reunião Agendada"
+        )
+        lead.stage = "Reunião Agendada"
+        changed += 1
+        crm.db.session.add(crm.AutomationLog(
+            lead_id=lead.id,
+            action="Correção de movimentação manual no Pipeline",
+            detail=(
+                "Lead retornado de '2ª Reunião Agendada' para 'Reunião Agendada' "
+                f"conforme movimentação manual; {cancelled} tarefa(s) de 2ª reunião "
+                "pendente(s) cancelada(s) para impedir reversão automática."
+            ),
+        ))
+
+    crm.set_setting("manual_rollback_tabata_sobre_v1", "1")
+    crm.db.session.commit()
+
+    if changed:
+        crm.app.logger.warning(
+            "Pipeline: correção manual aplicada a %s lead(s): Tabata/Sobre geladeiras.",
+            changed,
+        )
+
+
 def _complete_obsolete_pending_meetings(lead, current_stage):
     """Encerra reuniões que ficaram pendentes depois que o lead já avançou.
 
@@ -136,14 +219,28 @@ def _complete_obsolete_pending_meetings(lead, current_stage):
 
 
 # Corrige a transição no próprio POST de movimentação do Pipeline. Assim, quando
-# o usuário marca a 2ª reunião como realizada ou envia o contrato, a reunião
-# correspondente deixa de ser "Pendente" no mesmo commit da mudança de etapa.
+# o usuário avança uma etapa, reuniões antigas são concluídas; quando retrocede,
+# reuniões de etapas posteriores são canceladas para a escolha manual prevalecer.
 _original_lead_stage_view = crm.app.view_functions.get("lead_stage")
 if _original_lead_stage_view:
     def _lead_stage_with_meeting_completion(lead_id):
         stage = (request.form.get("stage") or "").strip()
         if stage in crm.PIPELINE:
             lead = crm.visible_leads_query().filter_by(id=lead_id).first_or_404()
+            previous_stage = (lead.stage or "").strip()
+
+            cancelled = _cancel_pending_meetings_for_manual_rollback(lead, stage)
+            if cancelled:
+                crm.db.session.add(crm.AutomationLog(
+                    lead_id=lead.id,
+                    action="Reunião cancelada ao retroceder Pipeline",
+                    detail=(
+                        f"{cancelled} reunião(ões) pendente(s) de etapa posterior "
+                        f"cancelada(s) ao mover manualmente de '{previous_stage}' "
+                        f"para '{stage}'."
+                    ),
+                ))
+
             completed = _complete_obsolete_pending_meetings(lead, stage)
             if completed:
                 crm.db.session.add(crm.AutomationLog(
