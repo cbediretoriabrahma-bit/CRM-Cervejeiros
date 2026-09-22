@@ -8,6 +8,11 @@ patch repara automaticamente essas inconsistências sempre que o Pipeline é abe
 Também trata a agenda como fonte de verdade para reuniões pendentes: se existir
 uma reunião pendente para um lead, o card desse lead precisa aparecer na coluna
 de reunião correspondente. Isso mantém a tela "Reuniões" e o Pipeline alinhados.
+
+Quando o lead já avançou para uma etapa posterior à reunião, qualquer tarefa de
+reunião ainda marcada como pendente é encerrada automaticamente. Isso evita que
+uma reunião já realizada faça o lead voltar de etapa e impeça, por exemplo, o
+status "Contrato Enviado" de permanecer salvo.
 """
 import re
 
@@ -82,6 +87,54 @@ def _has_meeting_slot(lead):
     return bool(match and match.group(1).strip())
 
 
+def _is_second_meeting(task):
+    text = f"{task.title or ''} {task.notes or ''}".lower()
+    return "2ª" in text or "2a" in text or "segunda" in text
+
+
+def _complete_obsolete_pending_meetings(lead, current_stage):
+    """Encerra reuniões que ficaram pendentes depois que o lead já avançou.
+
+    O botão de mudança de etapa do Pipeline grava primeiro o novo estágio e em
+    seguida redireciona para o próprio Pipeline. Se uma reunião realizada ainda
+    estiver como ``Pendente``, a sincronização antiga entendia que a agenda tinha
+    prioridade e desfazia o avanço. Aqui a etapa comercial mais avançada passa a
+    ser a evidência de que a reunião correspondente já aconteceu.
+    """
+    pending = crm.Task.query.filter_by(
+        lead_id=lead.id,
+        task_type="Reunião",
+        status="Pendente",
+    ).order_by(crm.Task.due_at.asc(), crm.Task.id.asc()).all()
+
+    if not pending:
+        return 0
+
+    close_first = current_stage in {
+        "1ª Reunião Realizada",
+        "2ª Reunião Agendada",
+        new_stage,
+        "Contrato Enviado",
+        "Fechado",
+        "Perdido",
+    }
+    close_second = current_stage in {
+        new_stage,
+        "Contrato Enviado",
+        "Fechado",
+        "Perdido",
+    }
+
+    changed = 0
+    for meeting in pending:
+        second = _is_second_meeting(meeting)
+        if (second and close_second) or (not second and close_first):
+            meeting.status = "Concluída"
+            changed += 1
+
+    return changed
+
+
 def _pending_meeting_stage(lead):
     meetings = crm.Task.query.filter_by(
         lead_id=lead.id,
@@ -94,8 +147,7 @@ def _pending_meeting_stage(lead):
 
     # Se houver uma 2ª reunião pendente, mostra o card na etapa mais avançada.
     for meeting in meetings:
-        text = f"{meeting.title or ''} {meeting.notes or ''}".lower()
-        if "2ª" in text or "2a" in text or "segunda" in text:
+        if _is_second_meeting(meeting):
             if "2ª Reunião Agendada" in crm.PIPELINE:
                 return "2ª Reunião Agendada"
 
@@ -107,9 +159,12 @@ def _pending_meeting_stage(lead):
 def _repair_lead_stage(lead):
     current = (lead.stage or "").strip()
 
-    # REGRA PRINCIPAL: reunião pendente tem prioridade sobre a etapa gravada.
-    # Antes esta verificação acontecia depois do retorno para etapas válidas,
-    # permitindo que reuniões existentes ficassem fora das colunas de reunião.
+    # Se o lead já avançou além de uma reunião, encerra primeiro qualquer tarefa
+    # antiga que tenha ficado pendente. Assim ela não força o card a voltar.
+    completed_meetings = _complete_obsolete_pending_meetings(lead, current)
+
+    # REGRA PRINCIPAL: reunião realmente pendente tem prioridade sobre a etapa
+    # gravada, desde que o lead ainda não tenha avançado além daquela reunião.
     meeting_stage = _pending_meeting_stage(lead)
     if meeting_stage:
         if current != meeting_stage or lead.stage != current:
@@ -119,13 +174,23 @@ def _repair_lead_stage(lead):
                 f"Etapa '{old}' sincronizada para '{meeting_stage}' porque existe "
                 "reunião pendente na agenda."
             )
+        if completed_meetings:
+            return True, f"{completed_meetings} reunião(ões) antiga(s) marcada(s) como concluída(s)."
         return False, None
 
     # Corrige espaços acidentais sem alterar a classificação.
     if current in crm.PIPELINE:
         if lead.stage != current:
             lead.stage = current
-            return True, f"Etapa normalizada para '{current}'."
+            detail = f"Etapa normalizada para '{current}'."
+            if completed_meetings:
+                detail += f" {completed_meetings} reunião(ões) antiga(s) concluída(s)."
+            return True, detail
+        if completed_meetings:
+            return True, (
+                f"Etapa '{current}' preservada; {completed_meetings} reunião(ões) "
+                "antiga(s) marcada(s) como concluída(s) para não reverter o Pipeline."
+            )
         return False, None
 
     mapped = LEGACY_STAGE_MAP.get(current)
