@@ -30,7 +30,85 @@
     });
   }
 
+  function saoPauloToday(){
+    var parts=new Intl.DateTimeFormat('en-CA',{
+      timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).formatToParts(new Date());
+    var values={};
+    parts.forEach(function(p){values[p.type]=p.value;});
+    return values.year+'-'+values.month+'-'+values.day;
+  }
+
+  function meetingVisual(status){
+    if(status==='late'){
+      return {background:'#fee2e2',border:'#dc2626',label:'🔴 Reunião passada',labelBg:'#b91c1c',labelColor:'#fff'};
+    }
+    if(status==='today'){
+      return {background:'#dcfce7',border:'#16a34a',label:'🟢 Reunião hoje',labelBg:'#15803d',labelColor:'#fff'};
+    }
+    return {background:'#fef3c7',border:'#d97706',label:'🟡 Reunião futura',labelBg:'#ca8a04',labelColor:'#fff'};
+  }
+
+  function applyMeetingVisual(card,status){
+    var visual=meetingVisual(status);
+    card.style.background=visual.background;
+    card.style.border='2px solid '+visual.border;
+    card.style.boxShadow='0 1px 3px rgba(0,0,0,.08)';
+    var label=card.querySelector('[data-meeting-date-label]');
+    if(!label){
+      label=document.createElement('span');
+      label.setAttribute('data-meeting-date-label','1');
+      label.style.display='inline-block';
+      label.style.marginTop='7px';
+      label.style.padding='3px 8px';
+      label.style.borderRadius='999px';
+      label.style.fontSize='11px';
+      label.style.fontWeight='800';
+      card.appendChild(label);
+    }
+    label.textContent=visual.label;
+    label.style.background=visual.labelBg;
+    label.style.color=visual.labelColor;
+  }
+
+  function colorPipelineMeetings(root){
+    root=root||document;
+    if(location.pathname!='/pipeline') return;
+
+    var today=saoPauloToday();
+    var statusByLead={};
+    var panels=root.querySelectorAll('section.panel');
+    panels.forEach(function(panel){
+      var title=panel.querySelector('h2');
+      if(!title || title.textContent.indexOf('Reuniões agendadas')===-1) return;
+      panel.querySelectorAll('a[href*="/lead/"]').forEach(function(card){
+        var text=card.textContent||'';
+        var match=text.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+        if(!match) return;
+        var meetingDate=match[3]+'-'+match[2]+'-'+match[1];
+        var status=meetingDate<today?'late':(meetingDate===today?'today':'future');
+        applyMeetingVisual(card,status);
+        var nameNode=card.querySelector('b');
+        if(nameNode){statusByLead[nameNode.textContent.trim().toLowerCase()]=status;}
+      });
+    });
+
+    root.querySelectorAll('.kanban .column').forEach(function(column){
+      var heading=column.querySelector('h3');
+      if(!heading) return;
+      var stage=(heading.childNodes[0]&&heading.childNodes[0].textContent||heading.textContent).trim();
+      if(stage!=='Reunião Agendada' && stage!=='2ª Reunião Agendada') return;
+      column.querySelectorAll('.lead-card').forEach(function(card){
+        var nameNode=card.querySelector('a b');
+        if(!nameNode) return;
+        var status=statusByLead[nameNode.textContent.trim().toLowerCase()];
+        if(status) applyMeetingVisual(card,status);
+      });
+    });
+  }
+
   addRescheduleControls(document);
+  colorPipelineMeetings(document);
 
   var refreshing=false;
   function canRefresh(){
@@ -53,6 +131,7 @@
         var y=window.scrollY;
         current.innerHTML=fresh.innerHTML;
         addRescheduleControls(current);
+        colorPipelineMeetings(current);
         window.scrollTo(0,y);
       }
     }catch(e){}finally{refreshing=false;}
