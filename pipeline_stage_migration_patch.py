@@ -135,6 +135,32 @@ def _complete_obsolete_pending_meetings(lead, current_stage):
     return changed
 
 
+# Corrige a transição no próprio POST de movimentação do Pipeline. Assim, quando
+# o usuário marca a 2ª reunião como realizada ou envia o contrato, a reunião
+# correspondente deixa de ser "Pendente" no mesmo commit da mudança de etapa.
+_original_lead_stage_view = crm.app.view_functions.get("lead_stage")
+if _original_lead_stage_view:
+    def _lead_stage_with_meeting_completion(lead_id):
+        stage = (request.form.get("stage") or "").strip()
+        if stage in crm.PIPELINE:
+            lead = crm.visible_leads_query().filter_by(id=lead_id).first_or_404()
+            completed = _complete_obsolete_pending_meetings(lead, stage)
+            if completed:
+                crm.db.session.add(crm.AutomationLog(
+                    lead_id=lead.id,
+                    action="Reunião concluída ao avançar Pipeline",
+                    detail=(
+                        f"{completed} reunião(ões) pendente(s) encerrada(s) automaticamente "
+                        f"ao avançar o lead para '{stage}'."
+                    ),
+                ))
+        return _original_lead_stage_view(lead_id)
+
+    crm.app.view_functions["lead_stage"] = crm.login_required(
+        _lead_stage_with_meeting_completion
+    )
+
+
 def _pending_meeting_stage(lead):
     meetings = crm.Task.query.filter_by(
         lead_id=lead.id,
