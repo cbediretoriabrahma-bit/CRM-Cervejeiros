@@ -4,6 +4,10 @@ O Pipeline filtra os registros por igualdade exata de ``Lead.stage``. Por isso,
 uma etapa vazia, antiga, com espaços ou fora da lista atual faz o lead continuar
 na tela de Leads, mas desaparecer do kanban. Além da migração histórica, este
 patch repara automaticamente essas inconsistências sempre que o Pipeline é aberto.
+
+Também trata a agenda como fonte de verdade para reuniões pendentes: se existir
+uma reunião pendente para um lead, o card desse lead precisa aparecer na coluna
+de reunião correspondente. Isso mantém a tela "Reuniões" e o Pipeline alinhados.
 """
 import re
 
@@ -83,12 +87,12 @@ def _pending_meeting_stage(lead):
         lead_id=lead.id,
         task_type="Reunião",
         status="Pendente",
-    ).order_by(crm.Task.due_at.desc()).all()
+    ).order_by(crm.Task.due_at.desc(), crm.Task.id.desc()).all()
 
     if not meetings:
         return None
 
-    # Se houver uma 2ª reunião pendente, preserva a etapa comercial mais avançada.
+    # Se houver uma 2ª reunião pendente, mostra o card na etapa mais avançada.
     for meeting in meetings:
         text = f"{meeting.title or ''} {meeting.notes or ''}".lower()
         if "2ª" in text or "2a" in text or "segunda" in text:
@@ -103,6 +107,20 @@ def _pending_meeting_stage(lead):
 def _repair_lead_stage(lead):
     current = (lead.stage or "").strip()
 
+    # REGRA PRINCIPAL: reunião pendente tem prioridade sobre a etapa gravada.
+    # Antes esta verificação acontecia depois do retorno para etapas válidas,
+    # permitindo que reuniões existentes ficassem fora das colunas de reunião.
+    meeting_stage = _pending_meeting_stage(lead)
+    if meeting_stage:
+        if current != meeting_stage or lead.stage != current:
+            old = lead.stage
+            lead.stage = meeting_stage
+            return True, (
+                f"Etapa '{old}' sincronizada para '{meeting_stage}' porque existe "
+                "reunião pendente na agenda."
+            )
+        return False, None
+
     # Corrige espaços acidentais sem alterar a classificação.
     if current in crm.PIPELINE:
         if lead.stage != current:
@@ -115,13 +133,6 @@ def _repair_lead_stage(lead):
         old = lead.stage
         lead.stage = mapped
         return True, f"Etapa antiga '{old}' corrigida para '{mapped}'."
-
-    # Uma reunião pendente sempre deve deixar o lead visível em uma coluna de reunião.
-    meeting_stage = _pending_meeting_stage(lead)
-    if meeting_stage:
-        old = lead.stage
-        lead.stage = meeting_stage
-        return True, f"Etapa '{old}' corrigida para '{meeting_stage}' por reunião pendente."
 
     if _has_meeting_slot(lead) and "Reunião Agendada" in crm.PIPELINE:
         old = lead.stage
@@ -164,11 +175,37 @@ def _repair_pipeline_visibility():
     if changed:
         crm.db.session.commit()
         crm.app.logger.warning(
-            "Pipeline: %s lead(s) com etapa ausente/inválida foram corrigidos.",
+            "Pipeline: %s lead(s) sincronizado(s), inclusive reuniões pendentes.",
             changed,
         )
 
     return changed
+
+
+def _pipeline_pending_meetings():
+    """Lista todas as reuniões pendentes para conferência no topo do Pipeline.
+
+    Não depende da etapa atual do lead. Assim, mesmo uma inconsistência histórica
+    fica visível imediatamente enquanto a rotina de sincronização corrige o card.
+    """
+    query = crm.Task.query.filter_by(task_type="Reunião", status="Pendente")
+    user = crm.current_user()
+    if user and user.role == "seller":
+        query = query.filter(crm.Task.owner_id == user.id)
+
+    meetings = query.order_by(crm.Task.due_at.asc(), crm.Task.id.asc()).all()
+    return [
+        meeting
+        for meeting in meetings
+        if meeting.lead is not None and not _is_archived(meeting.lead)
+    ]
+
+
+@crm.app.context_processor
+def _pipeline_meeting_context():
+    return {
+        "pipeline_pending_meetings": _pipeline_pending_meetings,
+    }
 
 
 @crm.app.before_request
