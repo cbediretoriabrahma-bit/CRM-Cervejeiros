@@ -133,19 +133,27 @@ def _cancel_pending_meetings_for_manual_rollback(lead, target_stage):
     return changed
 
 
-# Correção pontual solicitada para os leads que já haviam sido movidos manualmente,
-# mas voltaram para a 2ª reunião por causa da antiga sincronização automática.
+# Correção pontual para leads que já haviam sido movidos manualmente, mas ficaram
+# presos na 2ª reunião por causa da sincronização antiga. A busca é intencionalmente
+# tolerante a variações de nome/acentuação digitadas no cadastro.
 @crm.app.before_request
 def _repair_requested_manual_rollbacks_once():
-    if crm.get_setting("manual_rollback_tabata_sobre_v1", "0") == "1":
+    if crm.get_setting("manual_rollback_requested_v2", "0") == "1":
         return
 
-    requested_names = {"tabata", "sobre geladeiras"}
     changed = 0
 
     for lead in crm.Lead.query.order_by(crm.Lead.id).all():
         name = (lead.name or "").strip().casefold()
-        if name not in requested_names:
+        requested = (
+            "tabata" in name
+            or "tábata" in name
+            or "tamara" in name
+            or "sobre a geladeira" in name
+            or "sobre geladeira" in name
+            or "sobre geladeiras" in name
+        )
+        if not requested:
             continue
         if (lead.stage or "").strip() != "2ª Reunião Agendada":
             continue
@@ -165,12 +173,12 @@ def _repair_requested_manual_rollbacks_once():
             ),
         ))
 
-    crm.set_setting("manual_rollback_tabata_sobre_v1", "1")
+    crm.set_setting("manual_rollback_requested_v2", "1")
     crm.db.session.commit()
 
     if changed:
         crm.app.logger.warning(
-            "Pipeline: correção manual aplicada a %s lead(s): Tabata/Sobre geladeiras.",
+            "Pipeline: correção manual aplicada a %s lead(s) solicitados.",
             changed,
         )
 
