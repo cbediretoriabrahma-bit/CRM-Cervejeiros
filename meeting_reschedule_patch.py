@@ -3,6 +3,10 @@
 Garante que o comando "Reagendar a reunião" apareça em todos os cards da
 coluna Reunião Agendada, inclusive quando o horário já venceu ou quando um lead
 antigo ficou na coluna sem uma Task de reunião associada.
+
+Ao salvar um reagendamento, a reunião volta obrigatoriamente ao status Pendente,
+a etapa do lead é sincronizada e o registro passa a aparecer imediatamente nos
+quadrinhos de reuniões do topo do Pipeline, onde a cor é calculada pela data.
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -159,6 +163,7 @@ def _reschedule_pipeline_context():
 
 
 def _create_missing_first_meeting(lead, new_local):
+    """Cria uma reunião real quando o card antigo só possuía o botão virtual."""
     conflict_task = _conflict(new_local)
     if conflict_task:
         flash(_conflict_message(conflict_task, new_local), "warning")
@@ -185,12 +190,15 @@ def _create_missing_first_meeting(lead, new_local):
         lead_id=lead.id,
         action="1ª reunião reagendada",
         detail=(
-            f"Novo agendamento criado para {new_label}, pois o lead estava em Reunião Agendada "
-            "sem uma tarefa de reunião associada."
+            f"Novo agendamento criado para {new_label}. Reunião marcada como Pendente "
+            "e sincronizada para aparecer no topo do Pipeline com a cor da data."
         ),
     ))
     crm.db.session.commit()
-    flash(f"1ª reunião reagendada com sucesso para {new_label}.", "success")
+    flash(
+        f"1ª reunião atualizada para {new_label}. Ela já deve aparecer nos quadrinhos do topo do Pipeline.",
+        "success",
+    )
     return task
 
 
@@ -218,8 +226,8 @@ def meeting_reschedule(task_id):
             new_local = _parse_new_local(lead)
             if new_local is None:
                 return _return_after(lead)
-            created = _create_missing_first_meeting(lead, new_local)
-            return _return_after(lead) if created else _return_after(lead)
+            _create_missing_first_meeting(lead, new_local)
+            return _return_after(lead)
     else:
         user = crm.current_user()
         q = crm.Task.query.filter_by(id=task_id, task_type="Reunião")
@@ -240,18 +248,36 @@ def meeting_reschedule(task_id):
     old_local = _local_dt(task.due_at)
     old_label = _fmt(old_local)
     new_label = _fmt(new_local)
-    number = 2 if _is_second_meeting(task) else 1
+    second = _is_second_meeting(task)
+    number = 2 if second else 1
     new_utc = new_local.astimezone(UTC).replace(tzinfo=None)
 
+    # Sincronização obrigatória: não basta trocar a data. Para o quadrinho do topo
+    # enxergar a reunião, ela precisa estar Pendente e o lead precisa estar na
+    # coluna correspondente.
     task.due_at = new_utc
+    task.status = "Pendente"
+    task.owner_id = lead.owner_id
     task.notes = ((task.notes or "").rstrip() + f"\nReagendada de {old_label} para {new_label}.").strip()
     lead.next_followup = new_utc
+    lead.stage = "2ª Reunião Agendada" if second else "Reunião Agendada"
 
     crm.db.session.add(crm.AutomationLog(
         lead_id=lead.id,
         action=f"{number}ª reunião reagendada",
-        detail=f"Reagendada de {old_label} para {new_label}. Histórico anterior preservado.",
+        detail=(
+            f"Reagendada de {old_label} para {new_label}; status definido como Pendente "
+            f"e lead sincronizado em '{lead.stage}' para aparecer nos quadrinhos do topo."
+        ),
     ))
     crm.db.session.commit()
-    flash(f"{number}ª reunião reagendada com sucesso para {new_label}.", "success")
+
+    # Força a sessão a reler os dados persistidos antes do redirect. Isso evita a
+    # tela reaproveitar um objeto antigo em workers diferentes do Render.
+    crm.db.session.expire_all()
+
+    flash(
+        f"{number}ª reunião atualizada para {new_label}. O quadrinho do topo será exibido com a cor correspondente à data.",
+        "success",
+    )
     return _return_after(lead)
