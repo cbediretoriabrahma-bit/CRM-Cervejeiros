@@ -1,6 +1,32 @@
 {% extends "base.html" %}{% block content %}
 <h1>Pipeline</h1>
 <p>Classificação automática na entrada e movimentação comercial por etapa.</p>
+
+{% set pending_meetings = pipeline_pending_meetings() %}
+<section class="panel" style="margin:14px 0 18px">
+  <div class="title-row" style="margin-bottom:10px">
+    <div>
+      <h2 style="margin:0">📅 Reuniões agendadas <span class="badge">{{pending_meetings|length}}</span></h2>
+      <p class="muted" style="margin:4px 0 0">Todas as reuniões pendentes da agenda aparecem aqui e ficam sincronizadas com as colunas do Pipeline.</p>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:8px">
+    {% for t in pending_meetings %}
+      {% set meeting_text = ((t.title or '') ~ ' ' ~ (t.notes or ''))|lower %}
+      <a href="{{url_for('lead_detail',lead_id=t.lead.id)}}" style="display:block;text-decoration:none;color:inherit;border:1px solid #e3e7ee;border-radius:10px;padding:10px;background:#fff">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <b>{{t.lead.name}}</b>
+          <span class="badge">{% if '2ª' in meeting_text or '2a' in meeting_text or 'segunda' in meeting_text %}2ª reunião{% else %}1ª reunião{% endif %}</span>
+        </div>
+        <div style="font-size:13px;margin-top:5px"><b>{{br_datetime(t.due_at)}}</b></div>
+        <div class="muted" style="font-size:12px;margin-top:4px">{{t.lead.city}}/{{t.lead.state}} · {{t.lead.owner.name if t.lead.owner else '-'}}</div>
+      </a>
+    {% else %}
+      <p class="muted" style="margin:0">Nenhuma reunião agendada.</p>
+    {% endfor %}
+  </div>
+</section>
+
 <div class="kanban">
 {% for s in pipeline %}
 <div class="column">
