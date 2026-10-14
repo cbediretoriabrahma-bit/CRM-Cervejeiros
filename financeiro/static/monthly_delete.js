@@ -7,28 +7,19 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(!match) return;
 
     const accountId=match[1];
-    const row=link.closest('tr');
     const actionWrap=link.closest('td')?.querySelector('div') || link.parentElement;
-    if(!actionWrap || actionWrap.querySelector('.delete-month-btn')) return;
-
-    let reference='esta competência';
-    if(row){
-      const cells=row.querySelectorAll('td');
-      const dueText=(cells[2]?.textContent||'').trim();
-      const parts=dueText.split('/');
-      if(parts.length===3) reference=`${parts[1]}/${parts[2]}`;
-    }
+    if(!actionWrap || actionWrap.querySelector('.delete-system-account-btn')) return;
 
     const button=document.createElement('button');
     button.type='button';
-    button.className='btn small delete-month-btn';
-    button.textContent='🗑 Excluir mês';
+    button.className='btn small delete-system-account-btn';
+    button.textContent='🗑 Excluir esta conta do sistema';
     button.style.background='#7f1d1d';
     button.style.color='#fff';
     button.style.borderColor='#7f1d1d';
 
     button.addEventListener('click',async()=>{
-      const message=`Excluir somente a conta de ${reference}?\n\nA recorrência e as contas dos outros meses serão mantidas. Se houver pagamento lançado nesta conta, ele também será removido.`;
+      const message='Tem certeza que deseja excluir esta conta do sistema?\n\nEsta ação removerá a conta e seus lançamentos vinculados e não poderá ser desfeita. Se a conta for recorrente, todos os meses vinculados à mesma recorrência também serão excluídos.';
       if(!confirm(message)) return;
 
       const original=button.textContent;
@@ -36,7 +27,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       button.textContent='Excluindo...';
 
       try{
-        const response=await fetch(`/conta/${accountId}/excluir-mes`,{
+        const response=await fetch(`/conta/${accountId}/excluir-sistema`,{
           method:'POST',
           credentials:'same-origin',
           headers:{'X-Requested-With':'XMLHttpRequest'}
@@ -47,7 +38,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       }catch(error){
         button.disabled=false;
         button.textContent=original;
-        alert('Não foi possível excluir esta conta. Tente novamente.');
+        alert('Não foi possível excluir esta conta do sistema. Tente novamente.');
       }
     });
 
