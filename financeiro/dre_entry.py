@@ -24,3 +24,6 @@ import monthly_delete_patch  # noqa: F401,E402
 # Reativa as otimizações de desempenho do painel.
 # Evita consultas repetidas, carrega pagamentos em lote e reduz o custo da abertura da página.
 import performance_patch  # noqa: F401,E402
+
+# Impede que rotinas pesadas de suporte do DRE sejam refeitas a cada clique.
+import latency_hotfix  # noqa: F401,E402
