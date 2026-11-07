@@ -94,6 +94,32 @@ class AppointmentTests(unittest.TestCase):
         self.assertFalse(self.m._book(self.lead, slot))
         self.crm.db.session.add.assert_not_called()
 
+    def test_conflicting_meeting_blocks_availability(self):
+        slot = datetime.now(ZoneInfo("America/Sao_Paulo")) + timedelta(days=3)
+        while slot.weekday() >= 5:
+            slot += timedelta(days=1)
+        slot = slot.replace(hour=10, minute=0, second=0, microsecond=0)
+        self.crm.Task.query.filter.return_value.first.return_value = object()
+        self.assertFalse(self.m._available(slot))
+
+    def test_past_slot_is_not_available(self):
+        slot = datetime.now(ZoneInfo("America/Sao_Paulo")) - timedelta(hours=1)
+        self.assertFalse(self.m._available(slot))
+
+    def test_manual_handoff_skips_meeting_offer(self):
+        self.lead.notes = "[AI_HANDOFF]=1"
+        with patch.dict(os.environ, {"AI_WHATSAPP_ENABLED": "1", "AI_MEETING_ENABLED": "1"}):
+            self.sc._set_tag(self.lead, "AI_MTG_RESPONSE", "offer")
+            self.assertEqual(self.m._reply(self.lead, "quero reunião"), "legado")
+            self.assertFalse(self.sc._tag_value(self.lead, "AI_MTG_SLOT_1"))
+
+    def test_booking_is_not_confirmed_when_slot_taken(self):
+        slot = datetime.now(ZoneInfo("America/Sao_Paulo")) + timedelta(days=3)
+        with patch.object(self.m, "_available", return_value=False):
+            self.assertFalse(self.m._book(self.lead, slot))
+        self.assertEqual(self.lead.stage, "Qualificado")
+        self.crm.db.session.add.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
