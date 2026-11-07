@@ -100,6 +100,8 @@ class AppointmentTests(unittest.TestCase):
             slot += timedelta(days=1)
         slot = slot.replace(hour=10, minute=0, second=0, microsecond=0)
         self.crm.Task.query.filter.return_value.first.return_value = object()
+        self.crm.Task.due_at.__gt__.return_value = True
+        self.crm.Task.due_at.__lt__.return_value = True
         self.assertFalse(self.m._available(slot))
 
     def test_past_slot_is_not_available(self):
