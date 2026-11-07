@@ -7,6 +7,7 @@ Não há envio automático por padrão. Não alterar a branch principal sem homo
 ## Variáveis necessárias no Render
 - `AI_WHATSAPP_ENABLED=1`: usar IA no webhook, apenas após revisão/testes.
 - `AUTO_REPLY_WHATSAPP=1`: permitir o envio automático (existente no CRM).
+- `AI_MEETING_ENABLED=1`: ativar o agendamento real da primeira reunião pela IA, somente após testes; padrão desligado.
 - `OPENAI_API_KEY`: chave secreta da API OpenAI.
 - `OPENAI_MODEL`: modelo habilitado para a conta.
 - `WHATSAPP_TOKEN`: token da WhatsApp Cloud API.
@@ -21,7 +22,10 @@ Guarde todas as credenciais exclusivamente em variáveis de ambiente; não regis
 - Com `AI_WHATSAPP_ENABLED=1`, responde perguntas abertas utilizando OpenAI e o histórico recente do lead.
 - Evita atualizar cidade, estado e investimento com base na posição da mensagem; isso exige extração estruturada, ainda não implementada.
 - Interrompe respostas automáticas após solicitação de humano ou pedido de não contato.
-- Não marca horários; deve encaminhar confirmação ao consultor.
+- Com `AI_MEETING_ENABLED=1` (além do modo IA), oferece 2 horários de manhã e 2 à tarde, considerando as tarefas de reunião pendentes do CRM, e confirma a 1ª reunião apenas quando conseguir gravá-la. O bloqueio reservado no CRM é de 1 hora, embora a apresentação comercial possa durar cerca de 5 minutos.
+- Sem `AI_MEETING_ENABLED=1`, segue sem agendamento automático.
+- O cliente escolhe uma das opções numeradas (1 a 4). A agenda é reconsultada na confirmação; se o horário estiver indisponível, são oferecidas novas opções.
+- Para segurança contra agendamentos simultâneos da própria IA, o módulo usa bloqueio transacional PostgreSQL. Fluxos de agendamento manuais devem ser auditados para proteção equivalente.
 - Caso a OpenAI falhe, não envia uma resposta improvisada.
 - Verifica assinatura do webhook quando o modo IA está ativo.
 - Respeita o controle já existente `AUTO_REPLY_WHATSAPP`.
@@ -38,7 +42,10 @@ Guarde todas as credenciais exclusivamente em variáveis de ambiente; não regis
    - Mensagens repetidas, histórico, recuperação após erro e atendimento humano.
    - Pedido de cancelamento e retomada: não responder automaticamente.
    - Assinatura inválida: receber HTTP 403.
-   - Confirmação de reunião: IA não pode prometer reserva.
+   - Reunião: oferta de horários livres, escolha numérica e registro de `Task` pendente com estágio `Reunião Agendada`.
+   - Tentar escolher horário já ocupado: oferecer novas opções sem registrar tarefa duplicada.
+   - Simular dois clientes reservando a mesma hora e lead tentando confirmar reunião pela segunda vez.
+   - Com `AI_MEETING_ENABLED=0`, não registrar reuniões automaticamente.
 7. Conferir gastos, latência e privacidade de dados enviados à OpenAI.
 8. Inspecionar logs, adaptar para tráfego concorrente, segurança e limites de envio.
 9. Só após revisão e aprovação, promover branch para produção.
@@ -46,7 +53,7 @@ Guarde todas as credenciais exclusivamente em variáveis de ambiente; não regis
 ## Próximas melhorias
 - Registrar campos estruturados com validação, sem contagem de mensagens.
 - Painel de liga/desliga, assumir atendimento e revisar respostas.
-- Integração com disponibilidade real para agendamentos.
+- Melhorar a interpretação de datas livres e integração futura com Google Calendar, se necessário, preservando a agenda existente.
 - Fila de trabalhos, idempotência transacional e tratamento resiliente de webhooks.
 - Opt-out e regras de modelos aprovados fora da janela do WhatsApp.
 - Auditoria de consentimento, retenção e políticas LGPD.
