@@ -131,12 +131,9 @@ def _verified_webhook():
     ).hexdigest()
     if not hmac.compare_digest(expected, signature):
         return "Assinatura invalida", 403
-    return _legacy_webhook()
-
-
-_legacy_reply = p._reply_for_message
+    # O fluxo enriquecido existente implementa seu proprio questionario e\n    # ignora as funcoes de IA. Quando a IA esta ativa, usar o webhook base\n    # de patched_app, que chama os hooks _apply_answer_to_lead/_reply_for_message.\n    # A funcao de envio continua sendo a versao enriquecida do CRM.\n    return _ai_webhook()\n\n\n_legacy_reply = p._reply_for_message
 _legacy_apply = p._apply_answer_to_lead
-_legacy_webhook = p.crm.app.view_functions["whatsapp_webhook"]
+_legacy_webhook = p.crm.app.view_functions["whatsapp_webhook"]\n_ai_webhook = p.whatsapp_webhook
 
 p._reply_for_message = _reply
 p._apply_answer_to_lead = _apply_answer
