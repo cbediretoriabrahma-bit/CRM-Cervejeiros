@@ -202,9 +202,11 @@ def _reply(lead, message):
     queued = sc._tag_value(lead, "AI_MTG_RESPONSE")
     if queued:
         sc._set_tag(lead, "AI_MTG_RESPONSE", "")
-        if queued in ("offer", "refresh"):
-            return _offer(lead)
-        return queued
+        answer = _offer(lead) if queued in ("offer", "refresh") else queued
+        # O webhook original fez commit ANTES de chamar _reply. Sem este
+        # commit as opcoes numeradas nunca chegariam ao proximo request.
+        crm.db.session.commit()
+        return answer
     return _previous_reply(lead, message)
 
 
