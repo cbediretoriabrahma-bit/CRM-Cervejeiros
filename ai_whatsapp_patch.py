@@ -73,6 +73,8 @@ def _reply(lead, text):
     if not os.getenv("OPENAI_API_KEY"):
         p.crm.app.logger.error("AI_WHATSAPP_ENABLED sem OPENAI_API_KEY")
         return None
+    if _human_requested(text):
+        return "Recebi sua solicitação e vou encaminhar para nossa equipe comercial. Obrigado!"
     if "[AI_HANDOFF]=1" in (lead.notes or ""):
         return None
     if lead.stage in ("Contrato Enviado", "Fechado", "Perdido"):
