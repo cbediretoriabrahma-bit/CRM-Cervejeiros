@@ -112,7 +112,16 @@ def _chosen_index(message):
 
 
 def _book(lead, slot):
-    if not _available(slot):
+    if lead.stage in ("Reunião Agendada", "1ª Reunião Realizada",
+                      "2ª Reunião Agendada", "2ª Reunião Realizada",
+                      "Contrato Enviado", "Fechado", "Perdido"):
+        return False
+    existing = crm.Task.query.filter(
+        crm.Task.lead_id == lead.id,
+        crm.Task.task_type == "Reunião",
+        crm.Task.status == "Pendente",
+    ).first()
+    if existing is not None or not _available(slot):
         return False
     # PostgreSQL: todas as reservas criadas por este modulo compartilham
     # um lock transacional, impedindo duas confirmacoes simultaneas.
