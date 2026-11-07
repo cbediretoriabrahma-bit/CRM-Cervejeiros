@@ -27,3 +27,5 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_ai_meeting.py' -v
       - name: Simular atendimento WhatsApp e agendamento sem rede
         run: python -m unittest discover -s tests -p 'test_whatsapp_simulated.py' -v
+      - name: Validar isolamento do ambiente de teste
+        run: python -m unittest discover -s tests -p 'test_homologacao_isolation.py' -v
