@@ -8,6 +8,7 @@ Para uma integracao real com NUMERO DE TESTE DA META:
 - apenas 1 remetente/destinatario explicitamente permitido.
 """
 import os
+import hmac
 
 from flask import jsonify, request
 
@@ -76,6 +77,16 @@ crm.send_whatsapp_cloud = _send_only_to_test_number
 def _isolation_guard():
     if request.method == "GET" and request.path == "/homologacao/status":
         return None
+    # Validar a URL na Meta nao habilita recebimento nem envios.
+    if request.path == "/webhooks/whatsapp" and request.method == "GET":
+        expected = os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip()
+        provided = request.args.get("hub.verify_token", "")
+        challenge = request.args.get("hub.challenge", "")
+        if (expected and provided and challenge
+                and request.args.get("hub.mode") == "subscribe"
+                and hmac.compare_digest(provided.encode(), expected.encode())):
+            return challenge, 200
+        return "verification failed", 403
     if request.path != "/webhooks/whatsapp" or not LIVE:
         return "Servico de homologacao: rota bloqueada", 404
     if request.method == "GET":
