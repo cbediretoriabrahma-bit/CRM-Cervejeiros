@@ -18,39 +18,67 @@ def _commercial_assignees():
     return [u for u in users if (u.name or "").strip().lower() in allowed]
 
 
-def _round_robin_assignees():
-    """Mantém a distribuição automática atual somente entre Beto e Anderson."""
-    allowed = {"beto carvalho", "anderson holanda"}
-    return [u for u in _commercial_assignees() if (u.name or "").strip().lower() in allowed]
+def _leave_new_lead_unassigned(lead):
+    """Novos leads ficam na fila, sem responsável automático."""
+    return None
 
 
-def _assign_round_robin_beto_anderson(lead):
-    if lead.owner_id or crm.get_setting("auto_assign", "1") != "1":
-        return
+crm.assign_round_robin = _leave_new_lead_unassigned
+p.assign_round_robin = _leave_new_lead_unassigned
 
-    assignees = _round_robin_assignees()
-    if not assignees:
-        return
 
-    last = int(crm.get_setting("last_assigned_user_id", "0") or 0)
-    idx = 0
-    for i, user in enumerate(assignees):
-        if user.id == last:
-            idx = (i + 1) % len(assignees)
-            break
+def _visible_leads_with_unassigned():
+    user = crm.current_user()
+    if user and user.role == "seller":
+        return crm.Lead.query.filter(
+            crm.db.or_(
+                crm.Lead.owner_id == user.id,
+                crm.Lead.owner_id.is_(None),
+            )
+        )
+    return crm.Lead.query
 
-    selected = assignees[idx]
-    lead.owner_id = selected.id
-    crm.set_setting("last_assigned_user_id", selected.id)
+
+crm.visible_leads_query = _visible_leads_with_unassigned
+p.visible_leads_query = _visible_leads_with_unassigned
+
+
+@crm.app.route("/lead/<int:lead_id>/claim", methods=["POST"])
+@crm.login_required
+def lead_claim(lead_id):
+    user = crm.current_user()
+    if not user or user.role != "seller":
+        flash("Somente vendedores podem assumir leads disponíveis.", "danger")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+
+    lead = crm.Lead.query.filter_by(id=lead_id).first_or_404()
+    if lead.owner_id == user.id:
+        flash("Este lead já está com você.", "info")
+        return redirect(url_for("lead_detail", lead_id=lead.id))
+    if lead.owner_id is not None:
+        flash("Outro vendedor já assumiu este lead.", "warning")
+        return redirect(url_for("leads"))
+
+    claimed = crm.Lead.query.filter_by(id=lead.id, owner_id=None).update(
+        {crm.Lead.owner_id: user.id},
+        synchronize_session=False,
+    )
+    if not claimed:
+        crm.db.session.rollback()
+        flash("Outro vendedor acabou de assumir este lead.", "warning")
+        return redirect(url_for("leads"))
+
+    crm.Task.query.filter_by(
+        lead_id=lead.id, owner_id=None, status="Pendente"
+    ).update({crm.Task.owner_id: user.id}, synchronize_session=False)
     crm.db.session.add(crm.AutomationLog(
         lead_id=lead.id,
-        action="Distribuição automática",
-        detail=f"Lead atribuído a {selected.name}",
+        action="Lead assumido pelo vendedor",
+        detail=f"Lead assumido por {user.name}.",
     ))
-
-
-crm.assign_round_robin = _assign_round_robin_beto_anderson
-p.assign_round_robin = _assign_round_robin_beto_anderson
+    crm.db.session.commit()
+    flash(f"Lead assumido por {user.name}.", "success")
+    return redirect(url_for("lead_detail", lead_id=lead.id))
 
 
 @crm.app.route("/lead/<int:lead_id>/owner", methods=["POST"])
