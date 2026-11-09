@@ -25,7 +25,7 @@
           <span class="badge">{% if '2ª' in meeting_text or '2a' in meeting_text or 'segunda' in meeting_text %}2ª reunião{% else %}1ª reunião{% endif %}</span>
         </div>
         <div style="font-size:13px;margin-top:5px"><b>{{br_datetime(t.due_at)}}</b></div>
-        <div class="muted" style="font-size:12px;margin-top:4px">{{t.lead.city}}/{{t.lead.state}} · {{t.lead.owner.name if t.lead.owner else '-'}}</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">{{t.lead.city}}/{{t.lead.state}}</div><div class="lead-owner-tracking" style="margin-top:6px">{% if t.lead.owner %}<span class="lead-status assigned">Atendimento iniciado</span><strong class="lead-owner-name">{{t.lead.owner.name}}</strong>{% else %}<span class="lead-status unassigned">Ainda sem vendedor</span>{% endif %}</div>
       </a>
     {% else %}
       <p class="muted" style="margin:0">Nenhuma reunião agendada.</p>
@@ -218,7 +218,7 @@
 
     <a href="{{url_for('lead_detail',lead_id=l.id)}}" style="display:block;text-decoration:none;color:inherit">
       <b>{{l.name}}</b>
-      <small>{{l.city}}/{{l.state}} · {{l.owner.name if l.owner else '-'}}</small>
+      <small>{{l.city}}/{{l.state}}</small><div class="lead-owner-tracking">{% if l.owner %}<span class="lead-status assigned">Atendimento iniciado</span><strong class="lead-owner-name">{{l.owner.name}}</strong>{% else %}<span class="lead-status unassigned">Ainda sem vendedor</span>{% endif %}</div>
       <div><span class="badge {{l.temperature|lower}}">{{l.temperature}}</span><strong>{{l.score}}</strong></div>
     </a>
 
