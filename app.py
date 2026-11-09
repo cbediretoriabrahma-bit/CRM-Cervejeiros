@@ -328,7 +328,6 @@ def leads():
 def lead_new():
     if request.method=="POST":
         lead=Lead(); fill_lead(lead,request.form)
-        if session.get("role")=="seller": lead.owner_id=session["user_id"]
         db.session.add(lead); db.session.flush()
         assign_round_robin(lead); requalify(lead,preserve=False)
         msg=ai_reply(lead,"primeiro contato e qualificação")
