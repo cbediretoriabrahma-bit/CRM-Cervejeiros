@@ -1,11 +1,8 @@
 """Distribuição comercial dos leads do CRM Cervejeiros.
 
-"""Distribuição comercial dos leads do CRM Cervejeiros.
-
-- Novos leads continuam alternando entre Beto Carvalho e Anderson Holanda.
+- Novos leads alternam entre Beto Carvalho e Anderson Holanda.
 - Beto permanece com perfil admin.
 - Admin/manager pode atribuir leads manualmente a Beto, Anderson ou Julia.
-"""
 """
 from flask import flash, redirect, request, url_for
 
