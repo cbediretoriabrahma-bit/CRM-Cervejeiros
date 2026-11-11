@@ -1,0 +1,31 @@
+name: Homologacao IA e Agendamento
+on:
+  push:
+    branches:
+      - feature/ia-whatsapp-atendimento-20261107
+  pull_request:
+    paths:
+      - 'ai_*.py'
+      - 'crm_entry.py'
+      - 'tests/**'
+      - '.github/workflows/ai-homologacao.yml'
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verificar sintaxe da aplicacao
+        run: python -m compileall -q app.py patched_app.py crm_entry.py ai_whatsapp_patch.py ai_meeting_patch.py
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+      - name: Verificar inicializacao isolada no Render
+        run: python -c "from homologacao_entry import app; assert app.test_client().get('/homologacao/status').status_code == 200; assert app.test_client().get('/').status_code == 404"
+      - name: Executar testes do agendamento
+        run: python -m unittest discover -s tests -p 'test_ai_meeting.py' -v
+      - name: Simular atendimento WhatsApp e agendamento sem rede
+        run: python -m unittest discover -s tests -p 'test_whatsapp_simulated.py' -v
+      - name: Validar isolamento do ambiente de teste
+        run: python -m unittest discover -s tests -p 'test_homologacao_isolation.py' -v

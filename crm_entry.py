@@ -408,3 +408,11 @@ try:
     _sc._slot_is_free = _slot_is_free
 except Exception:
     pass
+
+
+# Modulo opt-in de IA para perguntas abertas no WhatsApp.
+# Importado apos todos os patches de qualificacao para preservar a rota final.
+import ai_whatsapp_patch  # noqa: F401,E402
+
+# Agenda da primeira reunião com consulta à disponibilidade e confirmação real.
+import ai_meeting_patch  # noqa: F401,E402
