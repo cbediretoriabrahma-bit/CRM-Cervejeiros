@@ -34,87 +34,80 @@ def _format_day(day):
     return f"{WEEKDAYS[day.weekday()]}, {day.strftime('%d/%m')}"
 
 
+def _slot_free_30min(slot):
+    """Checa sobreposicao com reunioes de 30 ou 60 minutos, de todos os consultores."""
+    start = slot.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    end = start + timedelta(minutes=30)
+    existing = crm.Task.query.filter(
+        crm.Task.task_type == "Reunião",
+        crm.Task.status == "Pendente",
+        crm.Task.due_at > start - timedelta(hours=1),
+        crm.Task.due_at < end,
+    ).all()
+    for task in existing:
+        note = (task.notes or "").lower()
+        duration = timedelta(minutes=30 if ("30 minutos" in note or "meia hora" in note) else 60)
+        if task.due_at < end and task.due_at + duration > start:
+            return False
+    return True
+
+
 def _free_slots_for_day(lead, day):
-    """Retorna apenas horários livres entre 11:00 e 15:00, de hora em hora."""
+    """11:00 a 18:00, de 30 em 30 minutos; ultimo inicio as 17:30."""
     now = datetime.now(TZ)
     slots = []
-    for hour in range(11, 16):  # 11:00, 12:00, 13:00, 14:00 e 15:00
-        slot = datetime.combine(day, datetime.min.time(), tzinfo=TZ).replace(hour=hour)
+    for minutes in range(11 * 60, 18 * 60, 30):
+        slot = datetime.combine(day, datetime.min.time(), tzinfo=TZ) + timedelta(minutes=minutes)
         if slot <= now + timedelta(hours=2):
             continue
-        if sc._slot_is_free(slot, lead.owner_id):
+        if _slot_free_30min(slot):
             slots.append(slot)
     return slots
 
-
 def _available_days(lead, refresh=False):
-    """Retorna até 7 dias úteis que tenham pelo menos 1 horário livre."""
-    if not refresh:
-        stored = []
-        for i in range(1, 8):
-            raw = sc._tag_value(lead, f"Q_DAY_{i}")
-            if not raw:
-                break
-            try:
-                day = datetime.fromisoformat(raw).date()
-            except Exception:
-                stored = []
-                break
-            if len(_free_slots_for_day(lead, day)) < 1:
-                stored = []
-                break
-            stored.append(day)
-        if stored:
-            return stored
-
+    """Dias de segunda a sexta no periodo dos proximos 15 dias corridos."""
     now = datetime.now(TZ)
     days = []
-    for add_day in range(0, 45):
+    for add_day in range(15):
         day = (now + timedelta(days=add_day)).date()
-        if day.weekday() >= 5:
-            continue
-        if _free_slots_for_day(lead, day):
+        if day.weekday() < 5 and _free_slots_for_day(lead, day):
             days.append(day)
-        if len(days) == 7:
-            break
-
-    for i in range(1, 8):
-        value = days[i - 1].isoformat() if i <= len(days) else ""
-        sc._set_tag(lead, f"Q_DAY_{i}", value)
     return days
 
 
+def _page(lead, key, total, size=8):
+    try:
+        page = max(0, int(sc._tag_value(lead, key) or 0))
+    except (ValueError, TypeError):
+        page = 0
+    return min(page, max(0, (total - 1) // size))
+
 def _select_day(lead, text):
     days = _available_days(lead, refresh=True)
-    if not days:
-        return None
     raw = _norm(text)
-
-    m = re.fullmatch(r"[1-7]", raw)
-    if m:
-        idx = int(raw) - 1
-        if idx < len(days):
-            return days[idx]
-
-    for day in days:
-        labels = {
-            _norm(_format_day(day)),
-            _norm(day.strftime("%d/%m")),
-            _norm(WEEKDAYS[day.weekday()]),
-            _norm(f"{WEEKDAYS[day.weekday()]} {day.strftime('%d/%m')}"),
-        }
-        if raw in labels:
+    page = _page(lead, "Q_DAY_PAGE", len(days))
+    if raw in {"next_days", "proximos dias", "próximos dias"}:
+        sc._set_tag(lead, "Q_DAY_PAGE", min(page + 1, max(0, (len(days) - 1) // 8)))
+        return None
+    if raw in {"prev_days", "dias anteriores"}:
+        sc._set_tag(lead, "Q_DAY_PAGE", max(0, page - 1))
+        return None
+    visible = days[page * 8:(page + 1) * 8]
+    for day in visible:
+        if raw in {_norm(day.isoformat()), _norm(_format_day(day)), _norm(day.strftime("%d/%m"))}:
             return day
+    # Compatibilidade com respostas antigas por numero da opcao.
+    if re.fullmatch(r"[1-8]", raw):
+        idx = int(raw) - 1
+        return visible[idx] if idx < len(visible) else None
     return None
 
-
 def _store_time_options(lead, day):
+    # Armazena identificadores sem sobrescrever o numero de telefone do lead.
     slots = _free_slots_for_day(lead, day)
-    for i in range(1, 6):
-        value = slots[i - 1].isoformat() if i <= len(slots) else ""
-        sc._set_tag(lead, f"Q_SLOT_{i}", value)
+    for i in range(1, 15):
+        sc._set_tag(lead, f"Q_SLOT_{i}", slots[i - 1].isoformat() if i <= len(slots) else "")
     return slots
-
 
 def _selected_day(lead):
     raw = sc._tag_value(lead, "Q_MEETING_DAY")
@@ -130,28 +123,24 @@ def _find_time(lead, text):
     day = _selected_day(lead)
     if not day:
         return None
-
     slots = _store_time_options(lead, day)
     raw = _norm(text)
-
-    m = re.fullmatch(r"[1-5]", raw)
-    if m:
-        idx = int(raw) - 1
-        return slots[idx] if idx < len(slots) else None
-
-    for slot in slots:
-        labels = {
-            _norm(slot.strftime("%H:%M")),
-            _norm(slot.strftime("%Hh")),
-            _norm(slot.strftime("%H")),
-            _norm(sc._format_slot(slot)),
-            _norm(sc._format_slot(slot)[:20]),
-            _norm(sc._format_slot(slot).replace(":00", "")),
-        }
-        if raw in labels:
+    page = _page(lead, "Q_TIME_PAGE", len(slots))
+    if raw in {"next_times", "mais horarios", "mais horários"}:
+        sc._set_tag(lead, "Q_TIME_PAGE", min(page + 1, max(0, (len(slots) - 1) // 8)))
+        return None
+    if raw in {"prev_times", "horarios anteriores", "horários anteriores"}:
+        sc._set_tag(lead, "Q_TIME_PAGE", max(0, page - 1))
+        return None
+    visible = slots[page * 8:(page + 1) * 8]
+    for slot in visible:
+        if raw in {_norm(slot.strftime("%H:%M")), _norm(slot.isoformat()),
+                   _norm(f"{slot.hour}h{slot.minute:02d}"), _norm(sc._format_slot(slot))}:
             return slot
+    if re.fullmatch(r"[1-8]", raw):
+        idx = int(raw) - 1
+        return visible[idx] if idx < len(visible) else None
     return None
-
 
 def _schedule_selected_time(lead, text):
     slot = _find_time(lead, text)
@@ -159,7 +148,7 @@ def _schedule_selected_time(lead, text):
         return False
 
     # Revalida no instante da confirmação para impedir agendamento duplicado.
-    if not sc._slot_is_free(slot, lead.owner_id):
+    if not _slot_free_30min(slot):
         day = _selected_day(lead)
         if day:
             _store_time_options(lead, day)
@@ -173,13 +162,13 @@ def _schedule_selected_time(lead, text):
         task_type="Reunião",
         due_at=utc_naive,
         status="Pendente",
-        notes=f"Reunião comercial de 1 hora agendada automaticamente para {sc._format_slot(slot)}.",
+        notes=f"Reunião comercial de 30 minutos agendada automaticamente para {sc._format_slot(slot)}.",
     ))
     lead.next_followup = utc_naive
     lead.stage = "Reunião Agendada"
     sc._set_tag(lead, "Q_MEETING_SLOT", slot.isoformat())
     current = (lead.notes or "").strip()
-    line = f"Reunião agendada: {sc._format_slot(slot)} | duração: 1 hora"
+    line = f"Reunião agendada: {sc._format_slot(slot)} | duração: 30 minutos"
     lead.notes = current + ("\n" if current else "") + line
     return True
 
@@ -187,49 +176,42 @@ def _schedule_selected_time(lead, text):
 def _day_prompt(lead):
     days = _available_days(lead, refresh=True)
     if not days:
-        return (
-            "No momento não encontrei dias úteis com horários livres entre 11:00 e 15:00. "
-            "Nosso consultor entrará em contato para combinar a reunião."
-        )
-
-    options = [
-        {"id": str(i + 1), "title": _format_day(day)[:24]}
-        for i, day in enumerate(days)
-    ]
+        return "No momento não encontrei horários livres nos próximos 15 dias. Nosso consultor entrará em contato."
+    page = _page(lead, "Q_DAY_PAGE", len(days))
+    visible = days[page * 8:(page + 1) * 8]
+    options = [{"id": day.isoformat(), "title": _format_day(day)[:24]} for day in visible]
+    if page > 0:
+        options.append({"id": "PREV_DAYS", "title": "Dias anteriores"})
+    if (page + 1) * 8 < len(days):
+        options.append({"id": "NEXT_DAYS", "title": "Próximos dias"})
     return fm._list_marker(
-        "📅 *Qual dia fica melhor para sua reunião?*\n\n"
-        "Escolha entre os *próximos 7 dias úteis disponíveis* "
-        "(segunda a sexta-feira):",
-        "Escolher dia",
-        options,
+        "📅 *Escolha o dia da reunião* nos próximos *15 dias*, de segunda a sexta-feira. "
+        "Use Próximos dias para ver outras datas disponíveis.",
+        "Escolher dia", options
     )
-
 
 def _time_prompt(lead, refresh=True):
     day = _selected_day(lead)
     if not day:
         return _day_prompt(lead)
-
     slots = _store_time_options(lead, day)
     if not slots:
         sc._set_tag(lead, "Q_MEETING_DAY", "")
-        return (
-            "⚠️ *Esse dia não possui mais horários livres entre 11:00 e 15:00.*\n\n" +
-            _day_prompt(lead)
-        )
-
-    options = [
-        {"id": str(i + 1), "title": slot.strftime("%H:%M")}
-        for i, slot in enumerate(slots)
-    ]
+        sc._set_tag(lead, "Q_DAY_PAGE", "0")
+        return "⚠️ Este dia ficou sem horários livres.\n\n" + _day_prompt(lead)
+    page = _page(lead, "Q_TIME_PAGE", len(slots))
+    visible = slots[page * 8:(page + 1) * 8]
+    options = [{"id": slot.strftime("%H:%M"), "title": slot.strftime("%H:%M")} for slot in visible]
+    if page > 0:
+        options.append({"id": "PREV_TIMES", "title": "Horários anteriores"})
+    if (page + 1) * 8 < len(slots):
+        options.append({"id": "NEXT_TIMES", "title": "Mais horários"})
     return fm._list_marker(
-        f"⏰ *Perfeito! Para {_format_day(day)}, escolha um horário disponível:*\n\n"
-        "As reuniões duram *1 hora*. O CRM mostra somente os horários livres "
-        "entre *11:00 e 15:00*.",
-        "Escolher horário",
-        options,
+        f"⏰ *Para {_format_day(day)}, escolha um horário livre.*\n\n"
+        "Reuniões de *30 minutos*, das *11:00 às 18:00*, com início até 17:30. "
+        "Use Mais horários para ver as outras opções.",
+        "Escolher horário", options
     )
-
 
 def _confirmation(lead):
     raw = sc._tag_value(lead, "Q_MEETING_SLOT")
@@ -239,7 +221,7 @@ def _confirmation(lead):
         slot = datetime.fromisoformat(raw)
         return (
             f"✅ *Reunião confirmada para {sc._format_slot(slot)}.*\n"
-            "Duração: *1 hora*. Nosso consultor falará com você no horário agendado. 🍻"
+            "Duração: *30 minutos*. Nosso consultor falará com você no horário agendado. 🍻"
         )
     except Exception:
         return None
