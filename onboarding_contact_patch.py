@@ -284,7 +284,11 @@ def _apply(lead, text, inbound_count, channel):
     elif inbound_count == 3:
         phone = _clean_phone(text)
         if phone:
-            lead.phone = phone
+            # O numero em lead.phone identifica o remetente real do webhook.
+            # Nao sobrescrever: isso interrompe as proximas mensagens quando
+            # o telefone digitado e diferente do numero que enviou a conversa.
+            # Guardar o telefone informado separadamente para consulta no CRM.
+            sc._set_tag(lead, "Q_CONTACT_WHATSAPP", phone)
 
     elif inbound_count == 4:
         lead.city = (text or "").strip()[:120]
