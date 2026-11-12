@@ -121,7 +121,9 @@ def _send_instagram_safe(recipient_id, reply, token):
         final_data["body"] = chunks[-1]
         prefix = "[[BUTTONS]]" if kind == "buttons" else "[[LIST]]"
         final_message = prefix + json.dumps(final_data, ensure_ascii=False)
-        return sc._send_instagram(recipient_id, final_message, token)
+        # Enviar a lista/botoes usando a API de quick replies.
+        # sc._send_instagram aceita somente texto e enviava o marcador JSON literal.
+        return fm._send_instagram_rich(recipient_id, final_message, token)
 
     last_detail = ""
     for chunk in _split_text(reply):
