@@ -55,7 +55,8 @@ def _find_time_hotfix(lead, text):
     return None
 
 
-mds._find_time = _find_time_hotfix
+# O seletor atual de 15 dias ja aceita horario visivel e comandos de paginacao.
+# Nao sobrescrever: o hotfix antigo ignorava 'Mais horarios'.
 
 
 _prev_instagram = p._reply_for_instagram
