@@ -129,14 +129,12 @@ def _compute_detailed_dre_fast(month, stores=None):
     expense_query = core.db.session.query(
         Payable.category,
         class_expr.label("dre_class"),
-        func.coalesce(func.sum(PayablePayment.amount), 0),
-    ).join(
-        Payable, Payable.id == PayablePayment.payable_id
-    ).outerjoin(
+        func.coalesce(func.sum(Payable.total_amount), 0),
+    ).select_from(Payable).outerjoin(
         CostDreClass, CostDreClass.payable_id == Payable.id
     ).filter(
-        PayablePayment.paid_date >= start,
-        PayablePayment.paid_date < end,
+        Payable.due_date >= start,
+        Payable.due_date < end,
     )
     if stores:
         expense_query = expense_query.filter(Payable.store.in_(stores))
@@ -198,14 +196,12 @@ def _unit_summary_rows(month, stores):
     expense_rows = core.db.session.query(
         Payable.store,
         class_expr.label("dre_class"),
-        func.coalesce(func.sum(PayablePayment.amount), 0),
-    ).join(
-        Payable, Payable.id == PayablePayment.payable_id
-    ).outerjoin(
+        func.coalesce(func.sum(Payable.total_amount), 0),
+    ).select_from(Payable).outerjoin(
         CostDreClass, CostDreClass.payable_id == Payable.id
     ).filter(
-        PayablePayment.paid_date >= start,
-        PayablePayment.paid_date < end,
+        Payable.due_date >= start,
+        Payable.due_date < end,
         Payable.store.in_(stores),
     ).group_by(Payable.store, class_expr).all()
 
