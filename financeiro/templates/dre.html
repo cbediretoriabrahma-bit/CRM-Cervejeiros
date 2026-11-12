@@ -6,10 +6,10 @@
 
 <div class="cards">
 <div class="metric blue-border"><span>Receita total</span><strong>{{ total_revenue|brl }}</strong></div>
-<div class="metric"><span>Lucro bruto</span><strong>{{ gross_profit|brl }}</strong><small>Receita menos custo direto/CMV.</small></div>
+<div class="metric"><span>Lucro bruto</span><strong>{{ gross_profit|brl }}</strong><small>Receita menos CMV das contas com vencimento no mês.</small></div>
 <div class="metric green-border"><span>Margem bruta</span><strong>{{ '%.1f'|format(gross_margin) }}%</strong></div>
 <div class="metric"><span>Margem de contribuição</span><strong>{{ '%.1f'|format(contribution_margin) }}%</strong><small>{{ contribution|brl }}</small></div>
-<div class="metric red-border"><span>Despesas pagas</span><strong>{{ total_expense|brl }}</strong></div>
+<div class="metric red-border"><span>Despesas da competência (por vencimento)</span><strong>{{ total_expense|brl }}</strong></div>
 <div class="metric {% if net_result >= 0 %}green-border{% else %}red-border{% endif %}"><span>Resultado líquido</span><strong>{{ net_result|brl }}</strong></div>
 <div class="metric {% if net_margin >= 0 %}green-border{% else %}red-border{% endif %}"><span>Margem líquida</span><strong>{{ '%.1f'|format(net_margin) }}%</strong></div>
 <div class="metric orange-border"><span>Ponto de equilíbrio estimado</span><strong>{{ breakeven|brl }}</strong><small>Receita mínima estimada para cobrir custos fixos considerando a margem de contribuição.</small></div>
@@ -34,7 +34,7 @@
 </div>
 
 <div class="panel"><h2>Quanto cada gasto representa</h2><p class="muted">A coluna “% da receita” mostra quanto cada categoria consome do faturamento. A coluna “% dos gastos” mostra o peso dela dentro das despesas.</p><div class="table-wrap"><table><thead><tr><th>Categoria</th><th>Valor</th><th>% da receita</th><th>% dos gastos</th></tr></thead><tbody>
-{% for r in expense_rows %}<tr><td><strong>{{ r.category }}</strong></td><td>{{ r.amount|brl }}</td><td>{{ '%.1f'|format(r.pct_revenue) }}%</td><td>{{ '%.1f'|format(r.pct_expense) }}%</td></tr>{% else %}<tr><td colspan="4" class="empty">Sem despesas pagas no período.</td></tr>{% endfor %}
+{% for r in expense_rows %}<tr><td><strong>{{ r.category }}</strong></td><td>{{ r.amount|brl }}</td><td>{{ '%.1f'|format(r.pct_revenue) }}%</td><td>{{ '%.1f'|format(r.pct_expense) }}%</td></tr>{% else %}<tr><td colspan="4" class="empty">Sem despesas com vencimento no período.</td></tr>{% endfor %}
 </tbody></table></div></div>
 
 <div class="grid-two charts-grid"><div class="panel"><h2>Composição das receitas</h2><canvas id="revChart"></canvas></div><div class="panel"><h2>Composição dos gastos</h2><canvas id="expChart"></canvas></div></div>
