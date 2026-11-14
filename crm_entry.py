@@ -114,22 +114,31 @@ def _meeting_hours():
     return [time(hour, 0) for hour in range(9, 21)]
 
 
-def _slot_is_free(local_dt, owner_id=None):
-    """Bloqueia o horário se existir QUALQUER reunião pendente no mesmo intervalo.
+def _meeting_duration(task):
+    notes = (task.notes or "").lower()
+    return timedelta(minutes=30 if "30 minutos" in notes or "meia hora" in notes else 60)
 
-    Vale igualmente para 1ª e 2ª reunião e para qualquer responsável, evitando
-    dois compromissos do CRM no mesmo horário.
-    """
-    utc_naive = local_dt.astimezone(UTC).replace(tzinfo=None)
-    start = utc_naive
-    end = utc_naive + timedelta(hours=1)
-    conflict = crm.Task.query.filter(
+
+def _meeting_conflict(local_dt, duration=timedelta(minutes=30), exclude_task_id=None):
+    """Retorna reunião pendente que cruza o intervalo solicitado."""
+    start = local_dt.astimezone(UTC).replace(tzinfo=None)
+    end = start + duration
+    query = crm.Task.query.filter(
         crm.Task.task_type == "Reunião",
         crm.Task.status == "Pendente",
-        crm.Task.due_at >= start,
+        crm.Task.due_at > start - timedelta(hours=1),
         crm.Task.due_at < end,
-    ).first()
-    return conflict is None
+    )
+    if exclude_task_id is not None:
+        query = query.filter(crm.Task.id != exclude_task_id)
+    for task in query.order_by(crm.Task.due_at).all():
+        if start < task.due_at + _meeting_duration(task) and task.due_at < end:
+            return task
+    return None
+
+
+def _slot_is_free(local_dt, owner_id=None):
+    return _meeting_conflict(local_dt) is None
 
 
 def _format_day(day):
@@ -141,11 +150,11 @@ def _format_slot(slot):
 
 
 def _second_meeting_slots_for_day(day):
-    """Para a 2ª reunião, oferece horários de 1 em 1 hora, das 11h às 17h."""
+    """Para a 2ª reunião, oferece horários de 30 em 30 minutos, das 11h às 17h30."""
     now = datetime.now(TZ)
     slots = []
-    for hour in range(11, 18):
-        slot = datetime.combine(day, time(hour, 0), tzinfo=TZ)
+    for minutes in range(11 * 60, 18 * 60, 30):
+        slot = datetime.combine(day, time.min, tzinfo=TZ) + timedelta(minutes=minutes)
         if slot <= now + timedelta(hours=2):
             continue
         if _slot_is_free(slot):
@@ -154,17 +163,13 @@ def _second_meeting_slots_for_day(day):
 
 
 def _second_meeting_days():
-    """Mostra 15 dias úteis com pelo menos 1 horário livre entre 11h e 17h."""
+    """Mostra os dias úteis disponíveis nos próximos 30 dias corridos."""
     now = datetime.now(TZ)
     days = []
-    for add_day in range(0, 90):
+    for add_day in range(0, 31):
         day = (now + timedelta(days=add_day)).date()
-        if day.weekday() >= 5:
-            continue
-        if len(_second_meeting_slots_for_day(day)) >= 1:
+        if day.weekday() < 5 and _second_meeting_slots_for_day(day):
             days.append(day)
-        if len(days) == 15:
-            break
     return days
 
 
@@ -185,8 +190,11 @@ def lead_second_meeting(lead_id):
                 flash("Dia inválido. Escolha uma das opções disponíveis.", "danger")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
-            if selected_day.weekday() >= 5 or len(_second_meeting_slots_for_day(selected_day)) < 1:
-                flash("Esse dia não possui mais horários livres entre 11:00 e 17:00. Escolha outro dia.", "warning")
+            if (selected_day < datetime.now(TZ).date()
+                    or selected_day > (datetime.now(TZ).date() + timedelta(days=30))
+                    or selected_day.weekday() >= 5
+                    or len(_second_meeting_slots_for_day(selected_day)) < 1):
+                flash("Escolha um dia útil dentro dos próximos 30 dias que ainda tenha horário livre.", "warning")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
         elif action == "confirm_slot":
@@ -204,8 +212,13 @@ def lead_second_meeting(lead_id):
             else:
                 slot = slot.astimezone(TZ)
 
-            if slot.date() != selected_day or slot.weekday() >= 5 or not (11 <= slot.hour <= 17) or slot.minute != 0:
-                flash("Horário inválido para o dia selecionado. A 2ª reunião deve ser marcada em um horário disponível entre 11:00 e 17:00.", "danger")
+            if (slot.date() != selected_day or slot.weekday() >= 5
+                    or slot.date() < datetime.now(TZ).date()
+                    or slot.date() > datetime.now(TZ).date() + timedelta(days=30)
+                    or not (11 <= slot.hour <= 17)
+                    or slot.minute not in (0, 30)
+                    or (slot.hour == 17 and slot.minute > 30)):
+                flash("Horário inválido. A 2ª reunião deve ocorrer em dia útil, nos próximos 30 dias, entre 11:00 e 17:30, de 30 em 30 minutos.", "danger")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
             if not _slot_is_free(slot):
@@ -228,7 +241,7 @@ def lead_second_meeting(lead_id):
                 task_type="Reunião",
                 due_at=utc_naive,
                 status="Pendente",
-                notes=f"2ª reunião comercial de 1 hora agendada para {_format_slot(slot)}.",
+                notes=f"2ª reunião comercial de 30 minutos agendada para {_format_slot(slot)}.",
             ))
             lead.next_followup = utc_naive
             lead.stage = "2ª Reunião Agendada"
@@ -289,15 +302,7 @@ def lead_delete_permanent(lead_id):
 
 
 def _quick_meeting_conflict(local_dt):
-    """Retorna uma reunião pendente que se sobreponha ao novo intervalo de 1 hora."""
-    new_start = local_dt.astimezone(UTC).replace(tzinfo=None)
-    new_end = new_start + timedelta(hours=1)
-    return crm.Task.query.filter(
-        crm.Task.task_type == "Reunião",
-        crm.Task.status == "Pendente",
-        crm.Task.due_at > new_start - timedelta(hours=1),
-        crm.Task.due_at < new_end,
-    ).order_by(crm.Task.due_at).first()
+    return _meeting_conflict(local_dt)
 
 
 def _schedule_first_meeting_from_pipeline(lead_id):
@@ -323,12 +328,16 @@ def _schedule_first_meeting_from_pipeline(lead_id):
         flash("A reunião precisa ser marcada para um horário futuro.", "warning")
         return redirect(request.referrer or url_for("pipeline"))
 
+    if local_dt.date() > datetime.now(TZ).date() + timedelta(days=30):
+        flash("A reunião deve ser marcada dentro dos próximos 30 dias.", "warning")
+        return redirect(request.referrer or url_for("pipeline"))
+
     if local_dt.weekday() >= 5:
         flash("A 1ª reunião deve ser agendada de segunda a sexta-feira.", "warning")
         return redirect(request.referrer or url_for("pipeline"))
 
-    if not (9 <= local_dt.hour <= 20):
-        flash("A 1ª reunião deve ser agendada entre 09:00 e 20:00.", "warning")
+    if not (11 <= local_dt.hour <= 17) or local_dt.minute not in (0, 30) or (local_dt.hour == 17 and local_dt.minute > 30):
+        flash("A 1ª reunião deve ser agendada entre 11:00 e 17:30, de 30 em 30 minutos.", "warning")
         return redirect(request.referrer or url_for("pipeline"))
 
     conflict = _quick_meeting_conflict(local_dt)
@@ -351,7 +360,7 @@ def _schedule_first_meeting_from_pipeline(lead_id):
             task_type="Reunião",
             due_at=utc_naive,
             status="Pendente",
-            notes=f"1ª reunião comercial de 1 hora agendada manualmente pelo Pipeline para {label}.",
+            notes=f"1ª reunião comercial de 30 minutos agendada manualmente pelo Pipeline para {label}.",
         ))
         lead.next_followup = utc_naive
         lead.stage = "Reunião Agendada"
