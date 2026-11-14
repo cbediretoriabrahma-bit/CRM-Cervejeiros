@@ -43,12 +43,16 @@ def _pending_second_meetings(lead_id):
     return [task for task in tasks if mr._is_second_meeting(task)]
 
 
+def _meeting_duration(task):
+    notes = (task.notes or "").lower()
+    return timedelta(minutes=30 if "30 minutos" in notes or "meia hora" in notes else 60)
+
+
 def _slot_conflict(local_dt, exclude_task_ids=None):
-    """Retorna conflito de 1 hora, ignorando tarefas que serão substituídas."""
+    """Retorna reunião pendente que se sobrepõe ao intervalo de 30 minutos."""
     exclude_task_ids = set(exclude_task_ids or [])
-    utc_naive = local_dt.astimezone(UTC).replace(tzinfo=None)
-    start = utc_naive
-    end = utc_naive + timedelta(hours=1)
+    start = local_dt.astimezone(UTC).replace(tzinfo=None)
+    end = start + timedelta(minutes=30)
 
     query = crm.Task.query.filter(
         crm.Task.task_type == "Reunião",
@@ -59,22 +63,20 @@ def _slot_conflict(local_dt, exclude_task_ids=None):
     if exclude_task_ids:
         query = query.filter(~crm.Task.id.in_(exclude_task_ids))
 
-    for task in query.all():
-        other_start = task.due_at
-        other_end = other_start + timedelta(hours=1)
-        if start < other_end and other_start < end:
+    for task in query.order_by(crm.Task.due_at).all():
+        if start < task.due_at + _meeting_duration(task) and task.due_at < end:
             return task
     return None
 
 
 def _second_meeting_slots_for_day(day, lead_id=None):
-    """Horários livres de 1 em 1 hora, das 11h às 17h."""
+    """Horários livres de 30 em 30 minutos, das 11h às 17h30."""
     now = datetime.now(TZ)
     current_ids = [t.id for t in _pending_second_meetings(lead_id)] if lead_id else []
     slots = []
-    for hour in range(11, 18):
-        slot = datetime.combine(day, time(hour, 0), tzinfo=TZ)
-        if slot <= now:
+    for minutes in range(11 * 60, 18 * 60, 30):
+        slot = datetime.combine(day, time.min, tzinfo=TZ) + timedelta(minutes=minutes)
+        if slot <= now + timedelta(hours=2):
             continue
         if _slot_conflict(slot, current_ids) is None:
             slots.append(slot)
@@ -82,16 +84,13 @@ def _second_meeting_slots_for_day(day, lead_id=None):
 
 
 def _second_meeting_days(lead_id=None):
+    """Dias úteis com horário livre nos próximos 30 dias corridos."""
     now = datetime.now(TZ)
     days = []
-    for add_day in range(0, 30):
+    for add_day in range(0, 31):
         day = (now + timedelta(days=add_day)).date()
-        if day.weekday() >= 5:
-            continue
-        if _second_meeting_slots_for_day(day, lead_id):
+        if day.weekday() < 5 and _second_meeting_slots_for_day(day, lead_id):
             days.append(day)
-        if len(days) == 5:
-            break
     return days
 
 
@@ -144,43 +143,46 @@ def _dashboard_second_meetings_synced():
     return [t for t in _dashboard_meetings_synced() if mr._is_second_meeting(t)]
 
 
-def _next_business_days(count=10):
-    day = datetime.now(TZ).date()
-    days = []
-    while len(days) < count:
-        if day.weekday() < 5:
-            days.append(day)
-        day += timedelta(days=1)
-    return days
-
-
-def _meeting_availability_calendar(count=10):
+def _meeting_availability_calendar(count=31):
+    """Grade das vagas nos próximos 30 dias corridos, de segunda a sexta."""
     try:
-        count = max(1, min(int(count), 15))
+        count = max(1, min(int(count), 31))
     except Exception:
-        count = 10
+        count = 31
 
     now = datetime.now(TZ)
-    days = _next_business_days(count)
+    days = [
+        (now + timedelta(days=offset)).date()
+        for offset in range(count)
+        if (now + timedelta(days=offset)).weekday() < 5
+    ]
     meetings = _valid_pending_meetings()
 
     occupied = set()
     for task in meetings:
         local = _local_dt(task.due_at)
-        if local:
-            occupied.add((local.date(), local.hour))
+        if not local:
+            continue
+        meeting_end = local + _meeting_duration(task)
+        for minutes in range(11 * 60, 18 * 60, 30):
+            slot_start = datetime.combine(local.date(), time.min, tzinfo=TZ) + timedelta(minutes=minutes)
+            if local < slot_start + timedelta(minutes=30) and slot_start < meeting_end:
+                occupied.add((local.date(), slot_start.hour, slot_start.minute))
 
-    hours = [f"{hour:02d}:00" for hour in range(9, 21)]
+    hours = [f"{minutes // 60:02d}:{minutes % 60:02d}" for minutes in range(11 * 60, 18 * 60, 30)]
     day_items = []
     for day in days:
         slots = []
-        for hour in range(9, 21):
-            slot_dt = datetime.combine(day, time(hour, 0), tzinfo=TZ)
+        for minutes in range(11 * 60, 18 * 60, 30):
+            hour, minute = divmod(minutes, 60)
+            slot_dt = datetime.combine(day, time.min, tzinfo=TZ) + timedelta(minutes=minutes)
             slots.append({
-                "occupied": (day, hour) in occupied,
-                "past": slot_dt < now,
+                "hour": f"{hour:02d}:{minute:02d}",
+                "occupied": (day, hour, minute) in occupied,
+                "past": slot_dt <= now,
             })
         day_items.append({
+            "iso": day.isoformat(),
             "weekday": WEEKDAYS_SHORT[day.weekday()],
             "date": day.strftime("%d/%m"),
             "slots": slots,
@@ -191,6 +193,7 @@ def _meeting_availability_calendar(count=10):
         "hours": hours,
         "occupied_count": len(occupied),
     }
+
 
 
 @crm.login_required
