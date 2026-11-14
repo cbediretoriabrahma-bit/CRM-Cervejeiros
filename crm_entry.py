@@ -110,6 +110,17 @@ UTC = ZoneInfo("UTC")
 WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 
 
+def _br_date(value):
+    if not value:
+        return "-"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(TZ).strftime("%d/%m/%Y")
+
+
+app.jinja_env.filters["br_date"] = _br_date
+
+
 def _meeting_hours():
     return [time(hour, 0) for hour in range(9, 21)]
 
