@@ -171,19 +171,17 @@ def _br_datetime(value, include_year=True):
     return aware.strftime("%d/%m/%Y %H:%M" if include_year else "%d/%m %H:%M")
 
 
-def _meeting_availability_calendar(days_count=10):
-    """Grade dos próximos dias úteis: vermelho=ocupado, branco=livre.
-
-    Não retorna nomes de leads; somente a ocupação dos horários comerciais de 09h a 20h.
-    Reuniões antigas de leads que já saíram da etapa de reunião não bloqueiam a grade.
-    """
+def _meeting_availability_calendar(days_count=31):
+    """Grade dos próximos 30 dias corridos, de segunda a sexta, em intervalos de 30 minutos."""
     now = datetime.now(TZ)
-    days = []
-    cursor = now.date()
-    while len(days) < days_count:
-        if cursor.weekday() < 5:  # segunda a sexta, conforme fluxo de agendamento
-            days.append(cursor)
-        cursor += timedelta(days=1)
+    days = [
+        (now + timedelta(days=offset)).date()
+        for offset in range(days_count)
+        if (now + timedelta(days=offset)).weekday() < 5
+    ]
+
+    if not days:
+        return {"hours": [], "days": []}
 
     start_local = datetime.combine(days[0], datetime.min.time(), tzinfo=TZ)
     end_local = datetime.combine(days[-1] + timedelta(days=1), datetime.min.time(), tzinfo=TZ)
@@ -194,7 +192,7 @@ def _meeting_availability_calendar(days_count=10):
         _visible_meeting_query()
         .filter(
             crm.Task.status == "Pendente",
-            crm.Task.due_at >= start_utc,
+            crm.Task.due_at >= start_utc - timedelta(hours=1),
             crm.Task.due_at < end_utc,
         )
         .all()
@@ -205,20 +203,28 @@ def _meeting_availability_calendar(days_count=10):
         if not _meeting_matches_pipeline(task):
             continue
         local = _local_dt(task.due_at)
-        if local:
-            occupied.add((local.date().isoformat(), local.hour))
+        if not local:
+            continue
+        notes = (task.notes or "").lower()
+        duration = timedelta(minutes=30 if "30 minutos" in notes or "meia hora" in notes else 60)
+        meeting_end = local + duration
+        for minutes in range(11 * 60, 18 * 60, 30):
+            slot_start = datetime.combine(local.date(), datetime.min.time(), tzinfo=TZ) + timedelta(minutes=minutes)
+            if local < slot_start + timedelta(minutes=30) and slot_start < meeting_end:
+                occupied.add((local.date().isoformat(), slot_start.hour, slot_start.minute))
 
     weekday_names = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"]
+    slot_minutes = list(range(11 * 60, 18 * 60, 30))
     calendar_days = []
     for day in days:
         slots = []
-        for hour in range(9, 21):
-            slot_dt = datetime.combine(day, datetime.min.time(), tzinfo=TZ).replace(hour=hour)
-            is_past = slot_dt < now
+        for minutes in slot_minutes:
+            hour, minute = divmod(minutes, 60)
+            slot_dt = datetime.combine(day, datetime.min.time(), tzinfo=TZ) + timedelta(minutes=minutes)
             slots.append({
-                "hour": f"{hour:02d}:00",
-                "occupied": (day.isoformat(), hour) in occupied,
-                "past": is_past,
+                "hour": f"{hour:02d}:{minute:02d}",
+                "occupied": (day.isoformat(), hour, minute) in occupied,
+                "past": slot_dt <= now,
             })
         calendar_days.append({
             "iso": day.isoformat(),
@@ -228,11 +234,9 @@ def _meeting_availability_calendar(days_count=10):
         })
 
     return {
-        "hours": [f"{hour:02d}:00" for hour in range(9, 21)],
+        "hours": [f"{minutes // 60:02d}:{minutes % 60:02d}" for minutes in slot_minutes],
         "days": calendar_days,
     }
-
-
 def _report_redirect(lead):
     if (request.form.get("return_to") or "").strip() == "pipeline":
         return redirect(url_for("pipeline"))
