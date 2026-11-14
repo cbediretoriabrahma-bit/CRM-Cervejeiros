@@ -1,17 +1,8 @@
 """Agendamento em duas etapas para WhatsApp e Instagram.
 
-Fluxo:
-1. Lead aceita a reunião.
-2. CRM oferece os próximos 7 dias úteis (segunda a sexta) que tenham pelo
-   menos um horário livre entre 11:00 e 15:00.
-3. Lead escolhe o dia.
-4. CRM oferece somente os horários realmente livres, de 1 em 1 hora:
-   11:00, 12:00, 13:00, 14:00 e 15:00.
-5. Antes de confirmar, a disponibilidade é conferida novamente.
-
-Horários ocupados nunca são oferecidos. Se um horário for ocupado entre a
-exibição e a escolha, o CRM atualiza as opções sem travar a conversa. Dias
-sem nenhum horário livre também não aparecem para o lead.
+O CRM oferece dias úteis dentro dos próximos 30 dias corridos, em páginas,
+e disponibiliza horários livres de 30 em 30 minutos, das 11:00 às 17:30.
+A disponibilidade é validada novamente antes de confirmar cada reunião.
 """
 import re
 from datetime import datetime, timedelta
@@ -53,7 +44,7 @@ def _slot_free_30min(slot):
 
 
 def _free_slots_for_day(lead, day):
-    """11:00 a 18:00, de 30 em 30 minutos; ultimo inicio as 17:30."""
+    """Oferece inícios de 11:00 a 17:30 em intervalos de 30 minutos."""
     now = datetime.now(TZ)
     slots = []
     for minutes in range(11 * 60, 18 * 60, 30):
@@ -65,7 +56,7 @@ def _free_slots_for_day(lead, day):
     return slots
 
 def _available_days(lead, refresh=False):
-    """Dias de segunda a sexta no periodo dos proximos 30 dias corridos."""
+    """Dias úteis com horário livre dentro dos próximos 30 dias corridos."""
     now = datetime.now(TZ)
     days = []
     for add_day in range(31):
