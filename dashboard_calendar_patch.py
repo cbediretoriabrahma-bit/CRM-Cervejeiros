@@ -213,8 +213,11 @@ def _lead_second_meeting_fixed(lead_id):
                 flash("Dia inválido. Escolha uma das opções disponíveis.", "danger")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
-            if selected_day.weekday() >= 5 or not _second_meeting_slots_for_day(selected_day, lead.id):
-                flash("Esse dia não possui mais horários livres entre 11:00 e 17:00. Escolha outro dia.", "warning")
+            if (selected_day < datetime.now(TZ).date()
+                    or selected_day > datetime.now(TZ).date() + timedelta(days=30)
+                    or selected_day.weekday() >= 5
+                    or not _second_meeting_slots_for_day(selected_day, lead.id)):
+                flash("Escolha um dia útil dentro dos próximos 30 dias que tenha horário livre.", "warning")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
         elif action == "confirm_slot":
@@ -235,11 +238,14 @@ def _lead_second_meeting_fixed(lead_id):
             if (
                 slot.date() != selected_day
                 or slot.weekday() >= 5
+                or slot.date() < datetime.now(TZ).date()
+                or slot.date() > datetime.now(TZ).date() + timedelta(days=30)
                 or not (11 <= slot.hour <= 17)
-                or slot.minute != 0
+                or slot.minute not in (0, 30)
+                or (slot.hour == 17 and slot.minute > 30)
                 or slot <= datetime.now(TZ)
             ):
-                flash("Horário inválido. A 2ª reunião deve ser marcada em um horário futuro disponível entre 11:00 e 17:00.", "danger")
+                flash("Horário inválido. A 2ª reunião deve ser marcada nos próximos 30 dias, entre 11:00 e 17:30, a cada 30 minutos.", "danger")
                 return redirect(url_for("lead_second_meeting", lead_id=lead.id))
 
             existing = _pending_second_meetings(lead.id)
@@ -270,7 +276,7 @@ def _lead_second_meeting_fixed(lead_id):
                 task.status = "Pendente"
                 task.notes = (
                     (task.notes or "").rstrip()
-                    + f"\n2ª reunião reagendada de {old_label} para {new_label}."
+                    + f"\n2ª reunião reagendada de {old_label} para {new_label}. Duração: 30 minutos."
                 ).strip()
 
                 # Se havia duplicidades antigas, elas deixam de bloquear a agenda.
@@ -292,7 +298,7 @@ def _lead_second_meeting_fixed(lead_id):
                     task_type="Reunião",
                     due_at=utc_naive,
                     status="Pendente",
-                    notes=f"2ª reunião comercial de 1 hora agendada para {new_label}.",
+                    notes=f"2ª reunião comercial de 30 minutos agendada para {new_label}.",
                 )
                 crm.db.session.add(task)
                 action_name = "2ª reunião agendada"
