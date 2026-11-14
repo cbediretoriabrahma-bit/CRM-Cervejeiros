@@ -2,12 +2,12 @@
 <div class="cards"><div class="metric"><span>Leads</span><b>{{total}}</b></div><div class="metric"><span>Qualificados</span><b>{{qualified}}</b></div><div class="metric"><span>Fechados</span><b>{{closed}}</b></div><div class="metric"><span>Conversão</span><b>{{conv}}%</b></div></div>
 <div class="grid2"><section class="panel"><h2>Funil</h2><canvas id="funil"></canvas></section><section class="panel"><h2>🔥 Prioridade</h2>{% for l in hot %}<a class="lead-row" href="{{url_for('lead_detail',lead_id=l.id)}}"><div><b>{{l.name}}</b><span class="lead-status {% if l.owner %}assigned{% else %}unassigned{% endif %}">{% if l.owner %}Atendimento iniciado{% else %}Ainda sem vendedor{% endif %}</span>{% if l.owner %}<strong class="lead-owner-name">{{l.owner.name}}</strong>{% endif %}</div><span>{{l.city}}/{{l.state}}</span><em>{{l.score}} pts</em></a>{% else %}<p class="muted">Sem leads quentes.</p>{% endfor %}</section></div>
 
-{% set cal = meeting_availability_calendar(10) %}
+{% set cal = meeting_availability_calendar(31) %}
 <section class="panel" style="margin-top:18px">
   <div class="title-row" style="margin-bottom:12px">
     <div>
       <h2 style="margin:0">📅 Calendário de vagas para reuniões</h2>
-      <p class="muted" style="margin:4px 0 0">Próximos 10 dias úteis. Vermelho = horário ocupado; branco = horário disponível. Os nomes dos leads não são exibidos.</p>
+      <p class="muted" style="margin:4px 0 0">Próximos 30 dias corridos, de segunda a sexta. Horários de 30 em 30 minutos, das 11:00 às 17:30. Vermelho = ocupado; branco = disponível.</p>
     </div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px">
       <span style="display:flex;align-items:center;gap:6px"><span style="width:18px;height:18px;border-radius:5px;background:#b5121b;display:inline-block"></span><b>Ocupado</b></span>
