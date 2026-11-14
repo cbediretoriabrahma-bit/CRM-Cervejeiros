@@ -40,9 +40,14 @@ def _fmt(value):
     return value.strftime("%d/%m/%Y às %H:%M") if value else "-"
 
 
+def _meeting_duration(task):
+    notes = (task.notes or "").lower()
+    return timedelta(minutes=30 if "30 minutos" in notes or "meia hora" in notes else 60)
+
+
 def _conflict(local_dt, current_task_id=None):
     new_start = local_dt.astimezone(UTC).replace(tzinfo=None)
-    new_end = new_start + timedelta(hours=1)
+    new_end = new_start + timedelta(minutes=30)
     query = crm.Task.query.filter(
         crm.Task.task_type == "Reunião",
         crm.Task.status == "Pendente",
@@ -52,11 +57,8 @@ def _conflict(local_dt, current_task_id=None):
     if current_task_id is not None:
         query = query.filter(crm.Task.id != current_task_id)
 
-    nearby = query.all()
-    for other in nearby:
-        other_start = other.due_at
-        other_end = other_start + timedelta(hours=1)
-        if new_start < other_end and other_start < new_end:
+    for other in query.order_by(crm.Task.due_at).all():
+        if new_start < other.due_at + _meeting_duration(other) and other.due_at < new_end:
             return other
     return None
 
@@ -102,9 +104,12 @@ def _parse_new_local(lead):
         flash("Escolha um dia útil, de segunda a sexta-feira.", "warning")
         return None
 
-    # Regra atual do CRM: horários de 1 em 1 hora, das 11h às 17h.
-    if not (11 <= new_local.hour <= 17) or new_local.minute != 0:
-        flash("Escolha um horário disponível de 11:00 a 17:00, de 1 em 1 hora.", "warning")
+    if new_local.date() > datetime.now(TZ).date() + timedelta(days=30):
+        flash("Escolha uma data dentro dos próximos 30 dias.", "warning")
+        return None
+
+    if not (11 <= new_local.hour <= 17) or new_local.minute not in (0, 30) or (new_local.hour == 17 and new_local.minute > 30):
+        flash("Escolha um horário de 11:00 a 17:30, de 30 em 30 minutos.", "warning")
         return None
 
     return new_local
@@ -258,7 +263,7 @@ def meeting_reschedule(task_id):
     task.due_at = new_utc
     task.status = "Pendente"
     task.owner_id = lead.owner_id
-    task.notes = ((task.notes or "").rstrip() + f"\nReagendada de {old_label} para {new_label}.").strip()
+    task.notes = ((task.notes or "").rstrip() + f"\nReagendada de {old_label} para {new_label}. Duração: 30 minutos.").strip()
     lead.next_followup = new_utc
     lead.stage = "2ª Reunião Agendada" if second else "Reunião Agendada"
 
