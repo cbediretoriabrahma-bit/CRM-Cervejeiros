@@ -20,10 +20,29 @@ def reports_all_team():
         s: sum((l.source or "N/I") == s for l in leads)
         for s in sorted(set((l.source or "N/I") for l in leads))
     }
-    by_state = {
-        s: sum((l.state or "N/I") == s for l in leads)
-        for s in sorted(set((l.state or "N/I") for l in leads))
+    state_counts = {}
+    city_counts = {}
+    for lead in leads:
+        state = (lead.state or "Não informado").strip().upper() or "Não informado"
+        city = (lead.city or "Não informada").strip() or "Não informada"
+        state_counts[state] = state_counts.get(state, 0) + 1
+        city_key = (city, state)
+        city_counts[city_key] = city_counts.get(city_key, 0) + 1
+
+    by_state = dict(sorted(state_counts.items(), key=lambda item: (-item[1], item[0])))
+    by_city = {
+        f"{city} / {state}": count
+        for (city, state), count in sorted(city_counts.items(), key=lambda item: (-item[1], item[0][0].lower(), item[0][1]))
     }
+    total_leads = len(leads)
+    state_data = [
+        {"state": state, "count": count, "percent": round(count / total_leads * 100, 1) if total_leads else 0}
+        for state, count in by_state.items()
+    ]
+    city_data = [
+        {"city_state": city_state, "count": count, "percent": round(count / total_leads * 100, 1) if total_leads else 0}
+        for city_state, count in by_city.items()
+    ]
     temps = {t: sum(l.temperature == t for l in leads) for t in ["Quente", "Morno", "Frio"]}
 
     seller_data = []
@@ -49,6 +68,10 @@ def reports_all_team():
         by_stage=by_stage,
         by_source=by_source,
         by_state=by_state,
+        by_city=by_city,
+        state_data=state_data,
+        city_data=city_data,
+        total_leads=total_leads,
         temps=temps,
         seller_data=seller_data,
     )
