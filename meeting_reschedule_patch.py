@@ -185,7 +185,7 @@ def _create_missing_first_meeting(lead, new_local):
         status="Pendente",
         notes=(
             f"1ª reunião registrada pelo comando Reagendar a reunião para {new_label}. "
-            "O lead estava em Reunião Agendada sem uma tarefa de reunião associada."
+            "O lead estava em Reunião Agendada sem uma tarefa de reunião associada. Duração: 30 minutos."
         ),
     )
     crm.db.session.add(task)
