@@ -65,10 +65,10 @@ def _free_slots_for_day(lead, day):
     return slots
 
 def _available_days(lead, refresh=False):
-    """Dias de segunda a sexta no periodo dos proximos 15 dias corridos."""
+    """Dias de segunda a sexta no periodo dos proximos 30 dias corridos."""
     now = datetime.now(TZ)
     days = []
-    for add_day in range(15):
+    for add_day in range(31):
         day = (now + timedelta(days=add_day)).date()
         if day.weekday() < 5 and _free_slots_for_day(lead, day):
             days.append(day)
@@ -176,7 +176,7 @@ def _schedule_selected_time(lead, text):
 def _day_prompt(lead):
     days = _available_days(lead, refresh=True)
     if not days:
-        return "No momento não encontrei horários livres nos próximos 15 dias. Nosso consultor entrará em contato."
+        return "No momento não encontrei horários livres nos próximos 30 dias. Nosso consultor entrará em contato."
     page = _page(lead, "Q_DAY_PAGE", len(days))
     visible = days[page * 8:(page + 1) * 8]
     options = [{"id": day.isoformat(), "title": _format_day(day)[:24]} for day in visible]
@@ -208,7 +208,7 @@ def _time_prompt(lead, refresh=True):
         options.append({"id": "NEXT_TIMES", "title": "Mais horários"})
     return fm._list_marker(
         f"⏰ *Para {_format_day(day)}, escolha um horário livre.*\n\n"
-        "Reuniões de *30 minutos*, das *11:00 às 18:00*, com início até 17:30. "
+        "Reuniões de *30 minutos*, das *11:00 às 17:30*, em intervalos de 30 minutos. "
         "Use Mais horários para ver as outras opções.",
         "Escolher horário", options
     )
