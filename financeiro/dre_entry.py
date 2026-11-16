@@ -31,3 +31,6 @@ import query_performance_patch  # noqa: F401,E402
 
 # Impede que rotinas pesadas de suporte do DRE sejam refeitas a cada clique.
 import latency_hotfix  # noqa: F401,E402
+
+# Habilita a exclusão individual de um lançamento de faturamento duplicado.
+import revenue_delete_patch  # noqa: F401,E402
